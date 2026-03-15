@@ -15,3 +15,7 @@ All notable changes to this project will be documented in this file.
   - `ReqwestClient` implementation using reqwest with bearer token auth
   - Response types: `User`, `Task`, `Label`, `TaskComment`, `TaskRelation`, `Bucket`, `ProjectView`
   - `ClientError` enum for HTTP and API errors
+- MCP stdio server transport (`src/server.rs`)
+  - `VeinServer` struct with rmcp `ToolRouter` and `ServerHandler` implementation
+  - Stdio transport via `rmcp::transport::io::stdio()`
+  - `main.rs` wired up with tokio `current_thread` runtime
