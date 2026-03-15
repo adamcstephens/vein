@@ -19,3 +19,7 @@ All notable changes to this project will be documented in this file.
   - `VeinServer` struct with rmcp `ToolRouter` and `ServerHandler` implementation
   - Stdio transport via `rmcp::transport::io::stdio()`
   - `main.rs` wired up with tokio `current_thread` runtime
+- CLI framework with clap (`src/cli.rs`)
+  - `vein init` — discover Vikunja projects/buckets (stub)
+  - `vein serve` — run as MCP stdio server
+  - No subcommand defaults to serve mode
