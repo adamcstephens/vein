@@ -15,10 +15,11 @@
       ];
 
       perSystem =
-        { lib, pkgs, ... }:
+        { pkgs, ... }:
         {
           devShells.default = pkgs.mkShell {
             packages = [
+              pkgs.beans
               pkgs.just
 
               pkgs.cargo

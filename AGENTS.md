@@ -1,0 +1,29 @@
+## Agent workflow
+- **IMPORTANT**: before you do anything else, run the `beans prime` command and heed its output.
+- Always use red/green TDD when implementing
+- Always format code with `just format`
+- Always check code linting with `just lint`
+- Always use commit messages following conventional commits, with ticket id in the body
+
+## Definition of done
+- tests pass
+- lints pass
+- changelog updated
+- ticket marked done
+- code committed
+
+## Code style
+- No `unwrap()` outside of tests — propagate with `?` or `ok_or_else`
+- Keep `Option`/`Result` as long as possible — don't collapse to sentinel values (e.g. `unwrap_or(0)` then `> 0`)
+- Functions that can fail should return `Result`, not log-and-continue
+- Avoid unsafe code, ask before adding.
+- Construct structs with direct literal syntax (`Foo { field: value, .. }`) instead of builder patterns or multi-argument `new()` functions
+- Canonicalize relative paths to absolute paths as early as possible
+
+## Dependencies
+- Rust deps are in `.cargo-home` — read code from there for correct versions without needing the internet.
+- *Always* ask before adding dependencies.
+- When adding dependencies, *always* check the internet for the latest version
+
+## Testing
+- Unit tests: `just test`
