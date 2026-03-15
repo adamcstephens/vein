@@ -18,6 +18,13 @@ pub enum Command {
         /// Project ID
         project_id: i64,
     },
+    /// List buckets for a project view
+    ListProjectViewBuckets {
+        /// Project ID
+        project_id: i64,
+        /// View ID
+        view_id: i64,
+    },
     /// Run as MCP stdio server (default if no subcommand given)
     Serve,
 }
@@ -44,6 +51,18 @@ mod tests {
         assert!(matches!(
             cli.command,
             Some(Command::ListProjectViews { project_id: 42 })
+        ));
+    }
+
+    #[test]
+    fn parses_list_project_view_buckets_subcommand() {
+        let cli = Cli::parse_from(["vein", "list-project-view-buckets", "5", "10"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::ListProjectViewBuckets {
+                project_id: 5,
+                view_id: 10
+            })
         ));
     }
 
