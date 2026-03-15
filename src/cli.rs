@@ -13,6 +13,11 @@ pub enum Command {
     Init,
     /// List available Vikunja projects
     ListProjects,
+    /// List views for a Vikunja project
+    ListProjectViews {
+        /// Project ID
+        project_id: i64,
+    },
     /// Run as MCP stdio server (default if no subcommand given)
     Serve,
 }
@@ -31,6 +36,15 @@ mod tests {
     fn parses_list_projects_subcommand() {
         let cli = Cli::parse_from(["vein", "list-projects"]);
         assert!(matches!(cli.command, Some(Command::ListProjects)));
+    }
+
+    #[test]
+    fn parses_list_project_views_subcommand() {
+        let cli = Cli::parse_from(["vein", "list-project-views", "42"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::ListProjectViews { project_id: 42 })
+        ));
     }
 
     #[test]

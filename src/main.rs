@@ -30,6 +30,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Ok(())
         }
+        Some(Command::ListProjectViews { project_id }) => {
+            let config = config::ConnectionConfig::from_env()?;
+            let client = ReqwestClient::new(&config)?;
+            let views = client.list_views(project_id).await?;
+            for view in views {
+                println!("{}\t{}\t{}", view.id, view.view_kind, view.title);
+            }
+            Ok(())
+        }
         Some(Command::Serve) | None => {
             let server = server::VeinServer::new();
             let service = server.serve(rmcp::transport::io::stdio()).await?;

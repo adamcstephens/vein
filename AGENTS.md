@@ -25,7 +25,8 @@
 ## Dependencies
 - Rust deps are in `.cargo-home` — read code from there for correct versions without needing the internet.
 - *Always* ask before adding dependencies.
-- When adding dependencies, *always* check the internet for the latest version
+- When adding dependencies, *always* check the internet for the latest version first.
+- For new dependencies, fetch the crate before trying to read source.
 
 ## Testing
 - Unit tests: `just test`
