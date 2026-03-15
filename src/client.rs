@@ -64,9 +64,19 @@ pub struct ProjectView {
     pub view_kind: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct Project {
+    pub id: i64,
+    pub title: String,
+    pub description: String,
+    #[serde(default)]
+    pub is_archived: bool,
+}
+
 // --- Trait ---
 
 pub trait VikunjaClient {
+    fn list_projects(&self) -> impl Future<Output = Result<Vec<Project>, ClientError>>;
     fn get_user(&self) -> impl Future<Output = Result<User, ClientError>>;
     fn get_task(&self, task_id: i64) -> impl Future<Output = Result<Task, ClientError>>;
     fn list_bucket_tasks(
@@ -216,6 +226,12 @@ struct CreateCommentPayload<'a> {
 }
 
 impl VikunjaClient for ReqwestClient {
+    async fn list_projects(&self) -> Result<Vec<Project>, ClientError> {
+        let resp = self.http.get(self.url("/projects")).send().await?;
+        let resp = Self::check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
     async fn get_user(&self) -> Result<User, ClientError> {
         let resp = self.http.get(self.url("/user")).send().await?;
         let resp = Self::check_response(resp).await?;
@@ -348,6 +364,9 @@ mod tests {
     }
 
     impl VikunjaClient for MockClient {
+        async fn list_projects(&self) -> Result<Vec<Project>, ClientError> {
+            unimplemented!()
+        }
         async fn get_user(&self) -> Result<User, ClientError> {
             Ok(self.user.clone())
         }
@@ -417,6 +436,33 @@ mod tests {
         let user = client.get_user().await.unwrap();
         assert_eq!(user.id, 1);
         assert_eq!(user.username, "agent");
+    }
+
+    #[test]
+    fn project_deserializes_from_json() {
+        let json = r#"{
+            "id": 5,
+            "title": "My Project",
+            "description": "A test project",
+            "is_archived": false
+        }"#;
+
+        let project: Project = serde_json::from_str(json).unwrap();
+        assert_eq!(project.id, 5);
+        assert_eq!(project.title, "My Project");
+        assert!(!project.is_archived);
+    }
+
+    #[test]
+    fn project_deserializes_with_missing_optional_fields() {
+        let json = r#"{
+            "id": 1,
+            "title": "Minimal",
+            "description": ""
+        }"#;
+
+        let project: Project = serde_json::from_str(json).unwrap();
+        assert!(!project.is_archived);
     }
 
     #[test]

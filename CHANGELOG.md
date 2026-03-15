@@ -23,3 +23,5 @@ All notable changes to this project will be documented in this file.
   - `vein init` — discover Vikunja projects/buckets (stub)
   - `vein serve` — run as MCP stdio server
   - No subcommand defaults to serve mode
+- `list_projects` method on `VikunjaClient` trait and `ReqwestClient` impl
+  - `Project` response type with id, title, description, is_archived
