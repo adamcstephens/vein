@@ -19,7 +19,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Some(Command::ListProjects) => {
-            let config = config::Config::from_env()?;
+            let config = config::ConnectionConfig::from_env()?;
             let client = ReqwestClient::new(&config)?;
             let projects = client.list_projects().await?;
             for project in projects {

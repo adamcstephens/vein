@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::future::Future;
 
-use crate::config::Config;
+use crate::config::ConnectionConfig;
 
 // --- Response types ---
 
@@ -161,7 +161,7 @@ pub struct ReqwestClient {
 }
 
 impl ReqwestClient {
-    pub fn new(config: &Config) -> Result<Self, ClientError> {
+    pub fn new(config: &ConnectionConfig) -> Result<Self, ClientError> {
         let mut headers = reqwest::header::HeaderMap::new();
         let auth_value =
             reqwest::header::HeaderValue::from_str(&format!("Bearer {}", config.vikunja_api_token))
@@ -489,13 +489,9 @@ mod tests {
 
     #[test]
     fn reqwest_client_builds_urls() {
-        let config = Config {
+        let config = ConnectionConfig {
             vikunja_url: "https://project.junco.dev/".to_string(),
             vikunja_api_token: "test-token".to_string(),
-            vikunja_project_id: 1,
-            vikunja_todo_bucket_id: 2,
-            vikunja_inprogress_bucket_id: 3,
-            vikunja_done_bucket_id: 4,
         };
 
         let client = ReqwestClient::new(&config).unwrap();
@@ -508,13 +504,9 @@ mod tests {
 
     #[test]
     fn reqwest_client_strips_trailing_slash() {
-        let config = Config {
+        let config = ConnectionConfig {
             vikunja_url: "https://example.com///".to_string(),
             vikunja_api_token: "token".to_string(),
-            vikunja_project_id: 1,
-            vikunja_todo_bucket_id: 2,
-            vikunja_inprogress_bucket_id: 3,
-            vikunja_done_bucket_id: 4,
         };
 
         let client = ReqwestClient::new(&config).unwrap();
