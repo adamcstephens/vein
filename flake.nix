@@ -20,6 +20,7 @@
           devShells.default = pkgs.mkShell {
             packages = [
               pkgs.beans
+              pkgs.gojq
               pkgs.just
 
               pkgs.cargo

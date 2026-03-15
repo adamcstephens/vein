@@ -3,8 +3,9 @@
 title: comment tool
 status: todo
 type: feature
+priority: normal
 created_at: 2026-03-15T20:17:54Z
-updated_at: 2026-03-15T20:17:54Z
+updated_at: 2026-03-15T20:52:09Z
 parent: vein-rnzz
 blocked_by:
     - vein-258m
@@ -12,3 +13,8 @@ blocked_by:
 ---
 
 MCP tool: add a comment to a task for progress notes and status updates.
+
+## API Notes
+- PUT /tasks/{taskID}/comments (not POST)
+- Body: { comment: "text" }
+- Response includes id, comment, author

@@ -4,13 +4,15 @@
 - Always format code with `just format`
 - Always check code linting with `just lint`
 - Always use commit messages following conventional commits, with ticket id in the body
+- When new context is decided, always update the associated work ticket with the details
 
 ## Definition of done
 - tests pass
 - lints pass
+- nix build passes
 - changelog updated
 - ticket marked done
-- code committed
+- code committed with all ticket changes included
 
 ## Code style
 - No `unwrap()` outside of tests — propagate with `?` or `ok_or_else`
