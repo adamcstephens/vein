@@ -25,3 +25,4 @@ All notable changes to this project will be documented in this file.
   - No subcommand defaults to serve mode
 - `list_projects` method on `VikunjaClient` trait and `ReqwestClient` impl
   - `Project` response type with id, title, description, is_archived
+- `vein list-projects` CLI subcommand — lists non-archived Vikunja projects

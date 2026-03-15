@@ -11,6 +11,8 @@ pub struct Cli {
 pub enum Command {
     /// Discover Vikunja projects and buckets, print env var configuration
     Init,
+    /// List available Vikunja projects
+    ListProjects,
     /// Run as MCP stdio server (default if no subcommand given)
     Serve,
 }
@@ -23,6 +25,12 @@ mod tests {
     fn parses_init_subcommand() {
         let cli = Cli::parse_from(["vein", "init"]);
         assert!(matches!(cli.command, Some(Command::Init)));
+    }
+
+    #[test]
+    fn parses_list_projects_subcommand() {
+        let cli = Cli::parse_from(["vein", "list-projects"]);
+        assert!(matches!(cli.command, Some(Command::ListProjects)));
     }
 
     #[test]

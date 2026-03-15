@@ -7,6 +7,7 @@ use clap::Parser;
 use rmcp::ServiceExt;
 
 use cli::{Cli, Command};
+use client::{ReqwestClient, VikunjaClient};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -15,6 +16,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Some(Command::Init) => {
             eprintln!("vein init: not yet implemented");
+            Ok(())
+        }
+        Some(Command::ListProjects) => {
+            let config = config::Config::from_env()?;
+            let client = ReqwestClient::new(&config)?;
+            let projects = client.list_projects().await?;
+            for project in projects {
+                if project.is_archived {
+                    continue;
+                }
+                println!("{}\t{}", project.id, project.title);
+            }
             Ok(())
         }
         Some(Command::Serve) | None => {
