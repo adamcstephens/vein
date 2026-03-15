@@ -1,6 +1,7 @@
 mod cli;
 mod client;
 mod config;
+mod init;
 mod server;
 
 use clap::Parser;
@@ -15,8 +16,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Some(Command::Init) => {
-            eprintln!("vein init: not yet implemented");
-            Ok(())
+            let config = config::ConnectionConfig::from_env()?;
+            let client = init::make_client(&config)?;
+            init::run(&client).await
         }
         Some(Command::ListProjects) => {
             let config = config::ConnectionConfig::from_env()?;
