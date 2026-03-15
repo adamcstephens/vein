@@ -24,6 +24,7 @@ pub async fn run(client: &impl VikunjaClient) -> Result<(), Box<dyn std::error::
     let project_idx = Select::new()
         .with_prompt("Select a project")
         .items(&project_labels)
+        .default(0)
         .interact()?;
 
     let project = &projects[project_idx];
@@ -47,6 +48,7 @@ pub async fn run(client: &impl VikunjaClient) -> Result<(), Box<dyn std::error::
             let view_idx = Select::new()
                 .with_prompt("Multiple kanban views found — select one")
                 .items(&view_labels)
+                .default(0)
                 .interact()?;
 
             kanban_views[view_idx]
@@ -68,16 +70,19 @@ pub async fn run(client: &impl VikunjaClient) -> Result<(), Box<dyn std::error::
     let todo_idx = Select::new()
         .with_prompt("Select the Todo bucket")
         .items(&bucket_labels)
+        .default(0)
         .interact()?;
 
     let inprogress_idx = Select::new()
         .with_prompt("Select the In Progress bucket")
         .items(&bucket_labels)
+        .default(0)
         .interact()?;
 
     let done_idx = Select::new()
         .with_prompt("Select the Done bucket")
         .items(&bucket_labels)
+        .default(0)
         .interact()?;
 
     println!();
