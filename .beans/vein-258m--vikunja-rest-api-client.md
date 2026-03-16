@@ -5,7 +5,7 @@ status: completed
 type: task
 priority: normal
 created_at: 2026-03-15T20:17:23Z
-updated_at: 2026-03-15T20:51:31Z
+updated_at: 2026-03-16T00:37:40Z
 parent: vein-rnzz
 blocked_by:
     - vein-ovz8
@@ -16,7 +16,7 @@ HTTP client layer for Vikunja REST API. Handles authentication (bearer token), b
 ## Design Decisions
 
 - Hand-written client covering only the endpoints our MCP tools need (not generated from swagger)
-- Reference swagger spec at https://project.junco.dev/api/v1/docs.json for request/response shapes
+- Reference swagger spec at the Vikunja instance's /api/v1/docs.json for request/response shapes
 - Trait-based: `VikunjaClient` trait with methods per API operation
 - `ReqwestClient` struct implements the trait with real HTTP via reqwest
 - Tests use hand-written mock impls of the trait — no mocking crate needed

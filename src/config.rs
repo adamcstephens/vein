@@ -115,13 +115,13 @@ mod tests {
     #[test]
     fn loads_valid_connection_config() {
         let lookup = env_from(&[
-            ("VIKUNJA_URL", "https://project.junco.dev"),
+            ("VIKUNJA_URL", "http://localhost:59123"),
             ("VIKUNJA_API_TOKEN", "test-token"),
         ]);
 
         let config = ConnectionConfig::load(lookup).unwrap();
 
-        assert_eq!(config.vikunja_url, "https://project.junco.dev");
+        assert_eq!(config.vikunja_url, "http://localhost:59123");
         assert_eq!(config.vikunja_api_token, "test-token");
     }
 

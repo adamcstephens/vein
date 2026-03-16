@@ -1,6 +1,7 @@
 {
   lib,
   rustPlatform,
+  cacert,
 }:
 
 rustPlatform.buildRustPackage {
@@ -19,6 +20,8 @@ rustPlatform.buildRustPackage {
     };
 
   cargoLock.lockFile = ../Cargo.lock;
+
+  env.SSL_CERT_FILE = "${cacert}/etc/ssl/certs/ca-bundle.crt";
 
   meta.mainProgram = "vein";
 }

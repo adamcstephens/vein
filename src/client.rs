@@ -487,30 +487,27 @@ mod tests {
         assert_eq!(task.labels[0].title, "urgent");
     }
 
+    fn make_client(base_url: &str) -> ReqwestClient {
+        ReqwestClient {
+            http: reqwest::Client::new(),
+            base_url: base_url.trim_end_matches('/').to_string(),
+        }
+    }
+
     #[test]
     fn reqwest_client_builds_urls() {
-        let config = ConnectionConfig {
-            vikunja_url: "https://project.junco.dev/".to_string(),
-            vikunja_api_token: "test-token".to_string(),
-        };
-
-        let client = ReqwestClient::new(&config).unwrap();
-        assert_eq!(client.url("/user"), "https://project.junco.dev/api/v1/user");
+        let client = make_client("http://localhost:59123/");
+        assert_eq!(client.url("/user"), "http://localhost:59123/api/v1/user");
         assert_eq!(
             client.url("/tasks/42"),
-            "https://project.junco.dev/api/v1/tasks/42"
+            "http://localhost:59123/api/v1/tasks/42"
         );
     }
 
     #[test]
     fn reqwest_client_strips_trailing_slash() {
-        let config = ConnectionConfig {
-            vikunja_url: "https://example.com///".to_string(),
-            vikunja_api_token: "token".to_string(),
-        };
-
-        let client = ReqwestClient::new(&config).unwrap();
-        assert_eq!(client.url("/user"), "https://example.com/api/v1/user");
+        let client = make_client("http://localhost:59123///");
+        assert_eq!(client.url("/user"), "http://localhost:59123/api/v1/user");
     }
 
     #[test]

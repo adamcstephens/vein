@@ -1,11 +1,11 @@
 ---
 # vein-z77r
 title: Fix nix build SSL certificate issue
-status: todo
+status: completed
 type: bug
 priority: normal
 created_at: 2026-03-15T21:25:31Z
-updated_at: 2026-03-15T21:26:42Z
+updated_at: 2026-03-16T00:37:39Z
 parent: vein-rnzz
 ---
 
@@ -21,3 +21,9 @@ reqwest::Error { kind: Builder, source: General("No CA certificates were loaded 
 reqwest/rustls tries to load system CA certs when building the Client. In the nix sandbox, no system certs are available. Need to either:
 - Add cacert to the nix derivation's build inputs
 - Or avoid building a real reqwest::Client in URL-only tests
+
+## Summary of Changes
+
+- Added `cacert` to nix derivation and set `env.SSL_CERT_FILE` so reqwest can find CA certs in the sandbox
+- Refactored URL tests to use a `make_client` helper that avoids building a full `ConnectionConfig`
+- Replaced all production URL references in tests with `localhost:59123`
