@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `list_tasks` MCP tool — list and search tasks with optional filters
 - `update_task` MCP tool — update a task's title or description
 - `add_relation` MCP tool — add a relation between two tasks
 - `complete` MCP tool — mark a task as done

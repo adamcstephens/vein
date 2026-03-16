@@ -93,6 +93,13 @@ pub trait VikunjaClient {
         view_id: i64,
         bucket_id: i64,
     ) -> impl Future<Output = Result<Vec<Task>, ClientError>> + Send;
+    fn list_view_tasks(
+        &self,
+        project_id: i64,
+        view_id: i64,
+        filter: Option<&str>,
+        search: Option<&str>,
+    ) -> impl Future<Output = Result<Vec<Task>, ClientError>> + Send;
     fn create_task(
         &self,
         project_id: i64,
@@ -288,6 +295,30 @@ impl VikunjaClient for ReqwestClient {
         Ok(resp.json().await?)
     }
 
+    async fn list_view_tasks(
+        &self,
+        project_id: i64,
+        view_id: i64,
+        filter: Option<&str>,
+        search: Option<&str>,
+    ) -> Result<Vec<Task>, ClientError> {
+        let mut query: Vec<(&str, String)> = Vec::new();
+        if let Some(f) = filter {
+            query.push(("filter", f.to_string()));
+        }
+        if let Some(s) = search {
+            query.push(("s", s.to_string()));
+        }
+        let resp = self
+            .http
+            .get(self.url(&format!("/projects/{project_id}/views/{view_id}/tasks")))
+            .query(&query)
+            .send()
+            .await?;
+        let resp = Self::check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
     async fn create_task(
         &self,
         project_id: i64,
@@ -423,6 +454,15 @@ mod tests {
             _project_id: i64,
             _view_id: i64,
             _bucket_id: i64,
+        ) -> Result<Vec<Task>, ClientError> {
+            unimplemented!()
+        }
+        async fn list_view_tasks(
+            &self,
+            _project_id: i64,
+            _view_id: i64,
+            _filter: Option<&str>,
+            _search: Option<&str>,
         ) -> Result<Vec<Task>, ClientError> {
             unimplemented!()
         }

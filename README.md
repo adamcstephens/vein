@@ -50,6 +50,7 @@ Or use tools directly from the CLI:
 ```sh
 vein tool list-ready
 vein tool get-task 42
+vein tool list-tasks -f "done = false" -s "login"
 vein tool create-task "Fix the bug" -d "Login is broken"
 vein tool claim 42
 vein tool complete 42

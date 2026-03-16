@@ -38,6 +38,15 @@ pub enum Command {
 pub enum ToolCommand {
     /// List tasks ready to be worked on (Todo bucket)
     ListReady,
+    /// List and search tasks across all buckets
+    ListTasks {
+        /// Filter expression (e.g. "done = false", "priority >= 3")
+        #[arg(short, long)]
+        filter: Option<String>,
+        /// Search text to match against task titles
+        #[arg(short, long)]
+        search: Option<String>,
+    },
     /// Get full details of a task by ID
     GetTask {
         /// Task ID
@@ -140,6 +149,46 @@ mod tests {
                 tool: ToolCommand::ListReady
             })
         ));
+    }
+
+    #[test]
+    fn parses_tool_list_tasks_subcommand() {
+        let cli = Cli::parse_from(["vein", "tool", "list-tasks"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Tool {
+                tool: ToolCommand::ListTasks {
+                    filter: None,
+                    search: None
+                }
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_tool_list_tasks_with_filter_and_search() {
+        let cli = Cli::parse_from([
+            "vein",
+            "tool",
+            "list-tasks",
+            "-f",
+            "done = false",
+            "-s",
+            "login",
+        ]);
+        match cli.command {
+            Some(Command::Tool {
+                tool:
+                    ToolCommand::ListTasks {
+                        filter: Some(f),
+                        search: Some(s),
+                    },
+            }) => {
+                assert_eq!(f, "done = false");
+                assert_eq!(s, "login");
+            }
+            other => panic!("expected ListTasks, got {other:?}"),
+        }
     }
 
     #[test]

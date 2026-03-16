@@ -26,6 +26,14 @@ impl VeinServer {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ListTasksParams {
+    #[schemars(description = "Filter expression (e.g. \"done = false\", \"priority >= 3\")")]
+    pub filter: Option<String>,
+    #[schemars(description = "Search text to match against task titles")]
+    pub search: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct TaskIdParams {
     #[schemars(description = "Task ID")]
     pub task_id: i64,
@@ -246,6 +254,26 @@ impl VeinServer {
             .map_err(|e| format!("Failed to update task: {e}"))?;
 
         Ok(format!("Updated task #{}: {}", task.id, task.title))
+    }
+
+    /// List and search tasks across all buckets with optional filters
+    #[tool(name = "list_tasks")]
+    async fn list_tasks(
+        &self,
+        Parameters(params): Parameters<ListTasksParams>,
+    ) -> Result<String, String> {
+        let tasks = self
+            .client
+            .list_view_tasks(
+                self.project_config.project_id,
+                self.project_config.view_id,
+                params.filter.as_deref(),
+                params.search.as_deref(),
+            )
+            .await
+            .map_err(|e| format!("Failed to list tasks: {e}"))?;
+
+        Ok(format_task_list(&tasks, "No tasks found."))
     }
 }
 
