@@ -1,14 +1,11 @@
-mod cli;
-mod client;
-mod config;
-mod init;
-mod server;
-
 use clap::Parser;
 use rmcp::ServiceExt;
 
-use cli::{Cli, Command};
-use client::{ReqwestClient, VikunjaClient};
+use vein::cli::{Cli, Command};
+use vein::client::{ReqwestClient, VikunjaClient};
+use vein::config::ConnectionConfig;
+use vein::init;
+use vein::server::VeinServer;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,12 +13,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Some(Command::Init) => {
-            let config = config::ConnectionConfig::from_env()?;
+            let config = ConnectionConfig::from_env()?;
             let client = init::make_client(&config)?;
             init::run(&client).await
         }
         Some(Command::ListProjects) => {
-            let config = config::ConnectionConfig::from_env()?;
+            let config = ConnectionConfig::from_env()?;
             let client = ReqwestClient::new(&config)?;
             let projects = client.list_projects().await?;
             for project in projects {
@@ -33,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Some(Command::ListProjectViews { project_id }) => {
-            let config = config::ConnectionConfig::from_env()?;
+            let config = ConnectionConfig::from_env()?;
             let client = ReqwestClient::new(&config)?;
             let views = client.list_views(project_id).await?;
             for view in views {
@@ -45,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             project_id,
             view_id,
         }) => {
-            let config = config::ConnectionConfig::from_env()?;
+            let config = ConnectionConfig::from_env()?;
             let client = ReqwestClient::new(&config)?;
             let buckets = client.list_buckets(project_id, view_id).await?;
             for bucket in buckets {
@@ -54,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
         Some(Command::Serve) | None => {
-            let server = server::VeinServer::new();
+            let server = VeinServer::new();
             let service = server.serve(rmcp::transport::io::stdio()).await?;
             service.waiting().await?;
             Ok(())

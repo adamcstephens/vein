@@ -2,3 +2,4 @@ target = "~/.dotfiles#agents"
 default_name = "vein-dev"
 cpus = 6
 memory = 8192
+ports = [":3456"]

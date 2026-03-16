@@ -116,6 +116,12 @@ pub trait VikunjaClient {
         project_id: i64,
         view_id: i64,
     ) -> impl Future<Output = Result<Vec<Bucket>, ClientError>>;
+    fn create_project(
+        &self,
+        title: &str,
+        description: &str,
+    ) -> impl Future<Output = Result<Project, ClientError>>;
+    fn delete_project(&self, project_id: i64) -> impl Future<Output = Result<(), ClientError>>;
 }
 
 // --- Update payload ---
@@ -194,6 +200,12 @@ impl ReqwestClient {
             Err(ClientError::Api { status, message })
         }
     }
+}
+
+#[derive(Serialize)]
+struct CreateProjectPayload<'a> {
+    title: &'a str,
+    description: &'a str,
 }
 
 #[derive(Serialize)]
@@ -353,6 +365,27 @@ impl VikunjaClient for ReqwestClient {
         let resp = Self::check_response(resp).await?;
         Ok(resp.json().await?)
     }
+
+    async fn create_project(&self, title: &str, description: &str) -> Result<Project, ClientError> {
+        let resp = self
+            .http
+            .put(self.url("/projects"))
+            .json(&CreateProjectPayload { title, description })
+            .send()
+            .await?;
+        let resp = Self::check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    async fn delete_project(&self, project_id: i64) -> Result<(), ClientError> {
+        let resp = self
+            .http
+            .delete(self.url(&format!("/projects/{project_id}")))
+            .send()
+            .await?;
+        Self::check_response(resp).await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -419,6 +452,16 @@ mod tests {
             _project_id: i64,
             _view_id: i64,
         ) -> Result<Vec<Bucket>, ClientError> {
+            unimplemented!()
+        }
+        async fn create_project(
+            &self,
+            _title: &str,
+            _description: &str,
+        ) -> Result<Project, ClientError> {
+            unimplemented!()
+        }
+        async fn delete_project(&self, _project_id: i64) -> Result<(), ClientError> {
             unimplemented!()
         }
     }
