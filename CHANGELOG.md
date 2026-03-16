@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `complete` MCP tool — mark a task as done
 - `claim` MCP tool — claim a task by moving it to In Progress
 - `comment` MCP tool — add a comment to a task
 - `get_task` MCP tool — get full task details by ID

@@ -163,6 +163,28 @@ impl VeinServer {
 
         Ok(format!("Claimed task #{}: {}", task.id, task.title))
     }
+
+    /// Mark a task as done by moving it to the Done bucket
+    #[tool(name = "complete")]
+    async fn complete(
+        &self,
+        Parameters(params): Parameters<TaskIdParams>,
+    ) -> Result<String, String> {
+        let task = self
+            .client
+            .update_task(
+                params.task_id,
+                crate::client::TaskUpdate {
+                    done: Some(true),
+                    bucket_id: Some(self.project_config.done_bucket_id),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| format!("Failed to complete task: {e}"))?;
+
+        Ok(format!("Completed task #{}: {}", task.id, task.title))
+    }
 }
 
 pub fn format_task_list(tasks: &[Task], empty_message: &str) -> String {

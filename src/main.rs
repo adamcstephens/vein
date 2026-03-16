@@ -107,6 +107,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .await?;
                     println!("Claimed task #{}: {}", task.id, task.title);
                 }
+                ToolCommand::Complete { task_id } => {
+                    let task = client
+                        .update_task(
+                            task_id,
+                            vein::client::TaskUpdate {
+                                done: Some(true),
+                                bucket_id: Some(project_config.done_bucket_id),
+                                ..Default::default()
+                            },
+                        )
+                        .await?;
+                    println!("Completed task #{}: {}", task.id, task.title);
+                }
                 ToolCommand::Comment { task_id, comment } => {
                     let result = client.create_comment(task_id, &comment).await?;
                     println!("Added comment #{} to task #{}", result.id, task_id);

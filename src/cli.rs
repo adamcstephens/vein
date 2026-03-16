@@ -52,6 +52,11 @@ pub enum ToolCommand {
         /// Task ID
         task_id: i64,
     },
+    /// Mark a task as done
+    Complete {
+        /// Task ID
+        task_id: i64,
+    },
     /// Add a comment to a task
     Comment {
         /// Task ID
@@ -146,6 +151,17 @@ mod tests {
             cli.command,
             Some(Command::Tool {
                 tool: ToolCommand::ListDone
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_tool_complete_subcommand() {
+        let cli = Cli::parse_from(["vein", "tool", "complete", "42"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Tool {
+                tool: ToolCommand::Complete { task_id: 42 }
             })
         ));
     }
