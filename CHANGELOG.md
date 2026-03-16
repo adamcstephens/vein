@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - `create_label` MCP tool — create a new label
 - `add_label` MCP tool — assign a label to a task
 - `list_labels` MCP tool — list all available labels
+- `list_ready` now filters out tasks blocked by incomplete tasks
 - `list_tasks` MCP tool — list and search tasks with optional filters
 - `update_task` MCP tool — update a task's title or description
 - `add_relation` MCP tool — add a relation between two tasks

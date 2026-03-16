@@ -677,6 +677,44 @@ mod tests {
     }
 
     #[test]
+    fn task_deserializes_with_related_tasks() {
+        let json = r#"{
+            "id": 5,
+            "title": "Blocked task",
+            "description": "",
+            "done": false,
+            "project_id": 1,
+            "bucket_id": 2,
+            "priority": 0,
+            "labels": [],
+            "assignees": [],
+            "related_tasks": {
+                "blocked": [
+                    {
+                        "id": 4,
+                        "title": "Blocker",
+                        "description": "",
+                        "done": false,
+                        "project_id": 1,
+                        "bucket_id": 0,
+                        "priority": 0,
+                        "labels": null,
+                        "assignees": null,
+                        "related_tasks": null
+                    }
+                ]
+            }
+        }"#;
+
+        let task: Task = serde_json::from_str(json).unwrap();
+        assert_eq!(task.related_tasks.len(), 1);
+        let blocked = task.related_tasks.get("blocked").unwrap();
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0].id, 4);
+        assert!(!blocked[0].done);
+    }
+
+    #[test]
     fn task_deserializes_with_missing_optional_fields() {
         let json = r#"{
             "id": 1,

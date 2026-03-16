@@ -15,6 +15,12 @@ use rmcp::{
 use crate::client::{ReqwestClient, Task, VikunjaClient};
 use crate::config::ProjectConfig;
 
+fn is_blocked(task: &Task) -> bool {
+    task.related_tasks
+        .get("blocked")
+        .is_some_and(|blockers| blockers.iter().any(|t| !t.done))
+}
+
 pub fn parse_priority(s: &str) -> Result<i64, String> {
     match s.to_lowercase().as_str() {
         "none" => Ok(0),
@@ -127,13 +133,7 @@ impl VeinServer {
         description = "Agent orientation: available tools, workflow guidance, and ready tasks"
     )]
     async fn orient(&self) -> Vec<PromptMessage> {
-        let ready_tasks = self
-            .client
-            .list_bucket_tasks(
-                self.project_config.project_id,
-                self.project_config.view_id,
-                self.project_config.todo_bucket_id,
-            )
+        let ready_tasks = fetch_ready_tasks(&self.client, &self.project_config)
             .await
             .map(|tasks| format_task_list(&tasks, "No tasks ready to be worked on."))
             .unwrap_or_else(|e| format!("(failed to fetch ready tasks: {e})"));
@@ -194,20 +194,13 @@ You are connected to a Vikunja-backed issue tracker. Use the tools below to mana
 
 #[tool_router]
 impl VeinServer {
-    /// List tasks that are ready to be worked on (in the Todo bucket)
+    /// List tasks that are ready to be worked on (in the Todo bucket, excluding blocked tasks)
     #[tool(name = "list_ready")]
     async fn list_ready(&self) -> Result<String, String> {
-        let tasks = self
-            .client
-            .list_bucket_tasks(
-                self.project_config.project_id,
-                self.project_config.view_id,
-                self.project_config.todo_bucket_id,
-            )
+        let ready = fetch_ready_tasks(&self.client, &self.project_config)
             .await
             .map_err(|e| format!("Failed to list tasks: {e}"))?;
-
-        Ok(format_task_list(&tasks, "No tasks ready to be worked on."))
+        Ok(format_task_list(&ready, "No tasks ready to be worked on."))
     }
 
     /// Create a new task in the project
@@ -452,6 +445,16 @@ impl VeinServer {
     }
 }
 
+pub async fn fetch_ready_tasks(
+    client: &impl VikunjaClient,
+    config: &ProjectConfig,
+) -> Result<Vec<Task>, crate::client::ClientError> {
+    let tasks = client
+        .list_bucket_tasks(config.project_id, config.view_id, config.todo_bucket_id)
+        .await?;
+    Ok(tasks.into_iter().filter(|t| !is_blocked(t)).collect())
+}
+
 pub fn format_task_list(tasks: &[Task], empty_message: &str) -> String {
     if tasks.is_empty() {
         return empty_message.to_string();
@@ -639,6 +642,32 @@ mod tests {
         assert!(!result.contains("Labels:"));
         assert!(!result.contains("Assignees:"));
         assert!(!result.contains("Relations:"));
+    }
+
+    #[test]
+    fn is_blocked_returns_true_when_blocked_by_incomplete_task() {
+        let mut task = make_task(1, "Blocked", 0, vec![]);
+        task.related_tasks.insert(
+            "blocked".to_string(),
+            vec![make_task(2, "Blocker", 0, vec![])], // done: false
+        );
+        assert!(is_blocked(&task));
+    }
+
+    #[test]
+    fn is_blocked_returns_false_when_blocked_by_completed_task() {
+        let mut task = make_task(1, "Not blocked", 0, vec![]);
+        let mut blocker = make_task(2, "Done blocker", 0, vec![]);
+        blocker.done = true;
+        task.related_tasks
+            .insert("blocked".to_string(), vec![blocker]);
+        assert!(!is_blocked(&task));
+    }
+
+    #[test]
+    fn is_blocked_returns_false_when_no_relations() {
+        let task = make_task(1, "Free", 0, vec![]);
+        assert!(!is_blocked(&task));
     }
 
     #[test]

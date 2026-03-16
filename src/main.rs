@@ -5,7 +5,7 @@ use vein::cli::{Cli, Command, ToolCommand};
 use vein::client::{ReqwestClient, VikunjaClient};
 use vein::config::{ConnectionConfig, ProjectConfig};
 use vein::init;
-use vein::server::{VeinServer, format_task_detail, format_task_list};
+use vein::server::{VeinServer, fetch_ready_tasks, format_task_detail, format_task_list};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -56,16 +56,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let client = ReqwestClient::new(&conn_config)?;
             match tool {
                 ToolCommand::ListReady => {
-                    let tasks = client
-                        .list_bucket_tasks(
-                            project_config.project_id,
-                            project_config.view_id,
-                            project_config.todo_bucket_id,
-                        )
-                        .await?;
+                    let ready = fetch_ready_tasks(&client, &project_config).await?;
                     println!(
                         "{}",
-                        format_task_list(&tasks, "No tasks ready to be worked on.")
+                        format_task_list(&ready, "No tasks ready to be worked on.")
                     );
                 }
                 ToolCommand::ListTasks { filter, search } => {
