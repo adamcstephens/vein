@@ -256,16 +256,25 @@ struct CreateTaskPayload<'a> {
 
 #[derive(Serialize)]
 struct UpdateTaskPayload {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    done: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    bucket_id: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    priority: Option<i64>,
+    title: String,
+    description: String,
+    done: bool,
+    bucket_id: i64,
+    priority: i64,
+}
+
+impl UpdateTaskPayload {
+    fn from_task_with_updates(task: &Task, updates: TaskUpdate) -> Self {
+        UpdateTaskPayload {
+            title: updates.title.unwrap_or_else(|| task.title.clone()),
+            description: updates
+                .description
+                .unwrap_or_else(|| task.description.clone()),
+            done: updates.done.unwrap_or(task.done),
+            bucket_id: updates.bucket_id.unwrap_or(task.bucket_id),
+            priority: updates.priority.unwrap_or(task.priority),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -364,16 +373,12 @@ impl VikunjaClient for ReqwestClient {
     }
 
     async fn update_task(&self, task_id: i64, updates: TaskUpdate) -> Result<Task, ClientError> {
+        let current = self.get_task(task_id).await?;
+        let payload = UpdateTaskPayload::from_task_with_updates(&current, updates);
         let resp = self
             .http
             .post(self.url(&format!("/tasks/{task_id}")))
-            .json(&UpdateTaskPayload {
-                title: updates.title,
-                description: updates.description,
-                done: updates.done,
-                bucket_id: updates.bucket_id,
-                priority: updates.priority,
-            })
+            .json(&payload)
             .send()
             .await?;
         let resp = Self::check_response(resp).await?;
@@ -712,6 +717,55 @@ mod tests {
         assert_eq!(blocked.len(), 1);
         assert_eq!(blocked[0].id, 4);
         assert!(!blocked[0].done);
+    }
+
+    fn make_task() -> Task {
+        Task {
+            id: 1,
+            title: "Original title".to_string(),
+            description: "Original description".to_string(),
+            done: false,
+            project_id: 1,
+            bucket_id: 10,
+            priority: 3,
+            labels: vec![],
+            assignees: vec![],
+            related_tasks: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn update_payload_preserves_fields_not_in_update() {
+        let task = make_task();
+        let updates = TaskUpdate {
+            done: Some(true),
+            bucket_id: Some(20),
+            ..Default::default()
+        };
+        let payload = UpdateTaskPayload::from_task_with_updates(&task, updates);
+        assert_eq!(payload.title, "Original title");
+        assert_eq!(payload.description, "Original description");
+        assert!(payload.done);
+        assert_eq!(payload.bucket_id, 20);
+        assert_eq!(payload.priority, 3);
+    }
+
+    #[test]
+    fn update_payload_applies_all_updates() {
+        let task = make_task();
+        let updates = TaskUpdate {
+            title: Some("New title".to_string()),
+            description: Some("New description".to_string()),
+            done: Some(true),
+            bucket_id: Some(99),
+            priority: Some(1),
+        };
+        let payload = UpdateTaskPayload::from_task_with_updates(&task, updates);
+        assert_eq!(payload.title, "New title");
+        assert_eq!(payload.description, "New description");
+        assert!(payload.done);
+        assert_eq!(payload.bucket_id, 99);
+        assert_eq!(payload.priority, 1);
     }
 
     #[test]

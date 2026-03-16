@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- `update_task` no longer zeroes out fields not included in the update (e.g. description, priority)
 - Integration tests use unique project names and match buckets by title instead of index
 
 ### Added

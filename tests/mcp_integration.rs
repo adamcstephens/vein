@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rmcp::ServiceExt;
-use vein::client::{ClientError, ReqwestClient, VikunjaClient};
+use vein::client::{ClientError, ReqwestClient, TaskUpdate, VikunjaClient};
 use vein::config::{ConnectionConfig, ProjectConfig};
 use vein::server::VeinServer;
 
@@ -213,4 +213,51 @@ async fn create_and_delete_test_project() {
         !projects.iter().any(|p| p.id == project.id),
         "project should be deleted"
     );
+}
+
+#[tokio::test]
+async fn update_task_preserves_fields_not_in_update() {
+    let test_project = TestProject::create(vikunja_client())
+        .await
+        .expect("failed to create test project");
+
+    let client = vikunja_client();
+
+    let task = client
+        .create_task(
+            test_project.config.project_id,
+            "Preserve me",
+            "This description must survive updates",
+            Some(3),
+        )
+        .await
+        .expect("failed to create task");
+
+    assert_eq!(task.description, "This description must survive updates");
+    assert_eq!(task.priority, 3);
+
+    // Partial update: only change done and bucket_id (simulates `complete`)
+    let updated = client
+        .update_task(
+            task.id,
+            TaskUpdate {
+                done: Some(true),
+                bucket_id: Some(test_project.config.done_bucket_id),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("failed to update task");
+
+    assert_eq!(
+        updated.description, "This description must survive updates",
+        "description was wiped by partial update"
+    );
+    assert_eq!(updated.priority, 3, "priority was wiped by partial update");
+    assert!(updated.done);
+
+    test_project
+        .cleanup()
+        .await
+        .expect("failed to clean up test project");
 }
