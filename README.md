@@ -2,6 +2,62 @@
 
 Agent-focused issue tracker built on [Vikunja](https://vikunja.io).
 
+## Setup
+
+### 1. Create a Vikunja API token
+
+In your Vikunja instance, go to **Settings > API Tokens** and create a token with these permissions:
+
+| Group | Permissions |
+|-------|-------------|
+| `tasks` | `read_one`, `create`, `update` |
+| `projects_views_tasks` | `read_all` |
+| `tasks_relations` | `create` |
+| `tasks_comments` | `create` |
+
+`vein init` also needs `projects` (`read_all`) and `projects_views` (`read_all`) to discover your project and bucket IDs. You can add these temporarily or use a broader token for setup.
+
+### 2. Configure environment
+
+Set your Vikunja connection, then run `vein init` to discover project and bucket IDs:
+
+```sh
+export VIKUNJA_URL="https://your-vikunja-instance.example.com"
+export VIKUNJA_API_TOKEN="tk_..."
+vein init
+```
+
+Then set all the variables it prints:
+
+```sh
+export VIKUNJA_PROJECT_ID="1"
+export VIKUNJA_VIEW_ID="10"
+export VIKUNJA_TODO_BUCKET_ID="2"
+export VIKUNJA_INPROGRESS_BUCKET_ID="3"
+export VIKUNJA_DONE_BUCKET_ID="4"
+```
+
+### 3. Run
+
+As an MCP stdio server (for use with AI agents):
+
+```sh
+vein serve  # or just: vein
+```
+
+Or use tools directly from the CLI:
+
+```sh
+vein tool list-ready
+vein tool get-task 42
+vein tool create-task "Fix the bug" -d "Login is broken"
+vein tool claim 42
+vein tool complete 42
+vein tool comment 42 "Started working on this"
+vein tool update-task 42 -t "New title"
+vein tool add-relation 1 2 blocked
+```
+
 ## Development
 
 ### Prerequisites
