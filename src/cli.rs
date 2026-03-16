@@ -47,6 +47,13 @@ pub enum ToolCommand {
     ListInProgress,
     /// List completed tasks
     ListDone,
+    /// Add a comment to a task
+    Comment {
+        /// Task ID
+        task_id: i64,
+        /// Comment text
+        comment: String,
+    },
     /// Create a new task in the project
     CreateTask {
         /// Task title
@@ -136,6 +143,20 @@ mod tests {
                 tool: ToolCommand::ListDone
             })
         ));
+    }
+
+    #[test]
+    fn parses_tool_comment_subcommand() {
+        let cli = Cli::parse_from(["vein", "tool", "comment", "42", "Work in progress"]);
+        match cli.command {
+            Some(Command::Tool {
+                tool: ToolCommand::Comment { task_id, comment },
+            }) => {
+                assert_eq!(task_id, 42);
+                assert_eq!(comment, "Work in progress");
+            }
+            other => panic!("expected Comment, got {other:?}"),
+        }
     }
 
     #[test]

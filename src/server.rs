@@ -32,6 +32,14 @@ pub struct TaskIdParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct CommentParams {
+    #[schemars(description = "Task ID")]
+    pub task_id: i64,
+    #[schemars(description = "Comment text")]
+    pub comment: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct CreateTaskParams {
     #[schemars(description = "Task title")]
     pub title: String,
@@ -118,6 +126,24 @@ impl VeinServer {
             .map_err(|e| format!("Failed to get task: {e}"))?;
 
         Ok(format_task_detail(&task))
+    }
+
+    /// Add a comment to a task for progress notes and status updates
+    #[tool(name = "comment")]
+    async fn comment(
+        &self,
+        Parameters(params): Parameters<CommentParams>,
+    ) -> Result<String, String> {
+        let comment = self
+            .client
+            .create_comment(params.task_id, &params.comment)
+            .await
+            .map_err(|e| format!("Failed to add comment: {e}"))?;
+
+        Ok(format!(
+            "Added comment #{} to task #{}",
+            comment.id, params.task_id
+        ))
     }
 }
 

@@ -95,6 +95,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let task = client.get_task(task_id).await?;
                     println!("{}", format_task_detail(&task));
                 }
+                ToolCommand::Comment { task_id, comment } => {
+                    let result = client.create_comment(task_id, &comment).await?;
+                    println!("Added comment #{} to task #{}", result.id, task_id);
+                }
                 ToolCommand::CreateTask { title, description } => {
                     let task = client
                         .create_task(project_config.project_id, &title, &description)
