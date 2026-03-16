@@ -38,6 +38,11 @@ pub enum Command {
 pub enum ToolCommand {
     /// List tasks ready to be worked on (Todo bucket)
     ListReady,
+    /// Get full details of a task by ID
+    GetTask {
+        /// Task ID
+        task_id: i64,
+    },
     /// List tasks currently in progress
     ListInProgress,
     /// List completed tasks
@@ -96,6 +101,17 @@ mod tests {
             cli.command,
             Some(Command::Tool {
                 tool: ToolCommand::ListReady
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_tool_get_task_subcommand() {
+        let cli = Cli::parse_from(["vein", "tool", "get-task", "42"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Tool {
+                tool: ToolCommand::GetTask { task_id: 42 }
             })
         ));
     }

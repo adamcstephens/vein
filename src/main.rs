@@ -5,7 +5,7 @@ use vein::cli::{Cli, Command, ToolCommand};
 use vein::client::{ReqwestClient, VikunjaClient};
 use vein::config::{ConnectionConfig, ProjectConfig};
 use vein::init;
-use vein::server::{VeinServer, format_task_list};
+use vein::server::{VeinServer, format_task_detail, format_task_list};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -90,6 +90,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         )
                         .await?;
                     println!("{}", format_task_list(&tasks, "No completed tasks."));
+                }
+                ToolCommand::GetTask { task_id } => {
+                    let task = client.get_task(task_id).await?;
+                    println!("{}", format_task_detail(&task));
                 }
                 ToolCommand::CreateTask { title, description } => {
                     let task = client

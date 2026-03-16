@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `get_task` MCP tool — get full task details by ID
 - `list_in_progress` MCP tool — list tasks currently being worked on
 - `list_done` MCP tool — list completed tasks
 - `create_task` MCP tool — create a new task with title and optional description

@@ -26,6 +26,12 @@ impl VeinServer {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct TaskIdParams {
+    #[schemars(description = "Task ID")]
+    pub task_id: i64,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct CreateTaskParams {
     #[schemars(description = "Task title")]
     pub title: String,
@@ -98,6 +104,21 @@ impl VeinServer {
 
         Ok(format_task_list(&tasks, "No completed tasks."))
     }
+
+    /// Get full details of a task by ID, including description, labels, relations, and assignees
+    #[tool(name = "get_task")]
+    async fn get_task(
+        &self,
+        Parameters(params): Parameters<TaskIdParams>,
+    ) -> Result<String, String> {
+        let task = self
+            .client
+            .get_task(params.task_id)
+            .await
+            .map_err(|e| format!("Failed to get task: {e}"))?;
+
+        Ok(format_task_detail(&task))
+    }
 }
 
 pub fn format_task_list(tasks: &[Task], empty_message: &str) -> String {
@@ -125,6 +146,51 @@ pub fn format_task_list(tasks: &[Task], empty_message: &str) -> String {
             "- #{}: {}{}{}",
             task.id, task.title, priority_str, label_str
         ));
+    }
+
+    lines.join("\n")
+}
+
+pub fn format_task_detail(task: &Task) -> String {
+    let mut lines = vec![format!("# #{}: {}", task.id, task.title)];
+
+    let status = if task.done { "Done" } else { "Open" };
+    lines.push(format!("Status: {status}"));
+
+    let priority = match task.priority {
+        0 => "None",
+        1 => "Low",
+        2 => "Medium",
+        3 => "High",
+        4 => "Urgent",
+        _ => "Unknown",
+    };
+    if task.priority > 0 {
+        lines.push(format!("Priority: {priority}"));
+    }
+
+    if !task.labels.is_empty() {
+        let label_names: Vec<&str> = task.labels.iter().map(|l| l.title.as_str()).collect();
+        lines.push(format!("Labels: {}", label_names.join(", ")));
+    }
+
+    if !task.assignees.is_empty() {
+        let names: Vec<&str> = task.assignees.iter().map(|u| u.username.as_str()).collect();
+        lines.push(format!("Assignees: {}", names.join(", ")));
+    }
+
+    if !task.related_tasks.is_empty() {
+        lines.push("Relations:".to_string());
+        for (kind, related) in &task.related_tasks {
+            for t in related {
+                lines.push(format!("  - {kind}: #{} {}", t.id, t.title));
+            }
+        }
+    }
+
+    if !task.description.is_empty() {
+        lines.push(String::new());
+        lines.push(task.description.clone());
     }
 
     lines.join("\n")
@@ -189,6 +255,53 @@ mod tests {
         let tasks = vec![make_task(5, "Refactor", 0, vec!["tech-debt", "backend"])];
         let result = format_task_list(&tasks, "No tasks.");
         assert!(result.contains("[tech-debt, backend]"));
+    }
+
+    #[test]
+    fn format_task_detail_shows_full_info() {
+        let mut task = make_task(42, "Fix login bug", 3, vec!["auth", "urgent"]);
+        task.description = "Users cannot log in after password reset.".to_string();
+        task.assignees = vec![crate::client::User {
+            id: 1,
+            username: "agent".to_string(),
+            name: "Test Agent".to_string(),
+        }];
+        task.related_tasks.insert(
+            "blocked".to_string(),
+            vec![Task {
+                id: 10,
+                title: "Reset flow".to_string(),
+                description: String::new(),
+                done: false,
+                project_id: 1,
+                bucket_id: 2,
+                priority: 0,
+                labels: vec![],
+                assignees: vec![],
+                related_tasks: HashMap::new(),
+            }],
+        );
+
+        let result = format_task_detail(&task);
+        assert!(result.contains("# #42: Fix login bug"));
+        assert!(result.contains("Status: Open"));
+        assert!(result.contains("Priority: High"));
+        assert!(result.contains("Labels: auth, urgent"));
+        assert!(result.contains("Assignees: agent"));
+        assert!(result.contains("blocked: #10 Reset flow"));
+        assert!(result.contains("Users cannot log in after password reset."));
+    }
+
+    #[test]
+    fn format_task_detail_minimal_task() {
+        let task = make_task(1, "Simple task", 0, vec![]);
+        let result = format_task_detail(&task);
+        assert!(result.contains("# #1: Simple task"));
+        assert!(result.contains("Status: Open"));
+        assert!(!result.contains("Priority:"));
+        assert!(!result.contains("Labels:"));
+        assert!(!result.contains("Assignees:"));
+        assert!(!result.contains("Relations:"));
     }
 
     #[test]
