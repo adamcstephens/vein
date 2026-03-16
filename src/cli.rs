@@ -38,6 +38,10 @@ pub enum Command {
 pub enum ToolCommand {
     /// List tasks ready to be worked on (Todo bucket)
     ListReady,
+    /// List tasks currently in progress
+    ListInProgress,
+    /// List completed tasks
+    ListDone,
     /// Create a new task in the project
     CreateTask {
         /// Task title
@@ -92,6 +96,28 @@ mod tests {
             cli.command,
             Some(Command::Tool {
                 tool: ToolCommand::ListReady
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_tool_list_in_progress_subcommand() {
+        let cli = Cli::parse_from(["vein", "tool", "list-in-progress"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Tool {
+                tool: ToolCommand::ListInProgress
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_tool_list_done_subcommand() {
+        let cli = Cli::parse_from(["vein", "tool", "list-done"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Tool {
+                tool: ToolCommand::ListDone
             })
         ));
     }

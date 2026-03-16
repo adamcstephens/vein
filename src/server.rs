@@ -66,6 +66,38 @@ impl VeinServer {
 
         Ok(format!("Created task #{}: {}", task.id, task.title))
     }
+
+    /// List tasks currently being worked on (in the In Progress bucket)
+    #[tool(name = "list_in_progress")]
+    async fn list_in_progress(&self) -> Result<String, String> {
+        let tasks = self
+            .client
+            .list_bucket_tasks(
+                self.project_config.project_id,
+                self.project_config.view_id,
+                self.project_config.inprogress_bucket_id,
+            )
+            .await
+            .map_err(|e| format!("Failed to list tasks: {e}"))?;
+
+        Ok(format_task_list(&tasks, "No tasks currently in progress."))
+    }
+
+    /// List completed tasks (in the Done bucket)
+    #[tool(name = "list_done")]
+    async fn list_done(&self) -> Result<String, String> {
+        let tasks = self
+            .client
+            .list_bucket_tasks(
+                self.project_config.project_id,
+                self.project_config.view_id,
+                self.project_config.done_bucket_id,
+            )
+            .await
+            .map_err(|e| format!("Failed to list tasks: {e}"))?;
+
+        Ok(format_task_list(&tasks, "No completed tasks."))
+    }
 }
 
 pub fn format_task_list(tasks: &[Task], empty_message: &str) -> String {

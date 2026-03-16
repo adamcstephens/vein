@@ -68,6 +68,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         format_task_list(&tasks, "No tasks ready to be worked on.")
                     );
                 }
+                ToolCommand::ListInProgress => {
+                    let tasks = client
+                        .list_bucket_tasks(
+                            project_config.project_id,
+                            project_config.view_id,
+                            project_config.inprogress_bucket_id,
+                        )
+                        .await?;
+                    println!(
+                        "{}",
+                        format_task_list(&tasks, "No tasks currently in progress.")
+                    );
+                }
+                ToolCommand::ListDone => {
+                    let tasks = client
+                        .list_bucket_tasks(
+                            project_config.project_id,
+                            project_config.view_id,
+                            project_config.done_bucket_id,
+                        )
+                        .await?;
+                    println!("{}", format_task_list(&tasks, "No completed tasks."));
+                }
                 ToolCommand::CreateTask { title, description } => {
                     let task = client
                         .create_task(project_config.project_id, &title, &description)
