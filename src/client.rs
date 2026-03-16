@@ -347,7 +347,7 @@ impl VikunjaClient for ReqwestClient {
     ) -> Result<Vec<Bucket>, ClientError> {
         let resp = self
             .http
-            .get(self.url(&format!("/projects/{project_id}/views/{view_id}/buckets")))
+            .get(self.url(&format!("/projects/{project_id}/views/{view_id}/tasks")))
             .send()
             .await?;
         let resp = Self::check_response(resp).await?;

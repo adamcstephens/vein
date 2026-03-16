@@ -22,6 +22,8 @@
               pkgs.beans
               pkgs.gojq
               pkgs.just
+              pkgs.process-compose
+              pkgs.vikunja
 
               pkgs.cargo
               pkgs.clippy

@@ -1,0 +1,15 @@
+database:
+  type: sqlite
+  path: ./vikunja.db
+
+service:
+  publicurl: http://localhost:3456
+  rootpath: .
+
+files:
+  basepath: ./files
+
+cors:
+  enable: true
+  origins:
+    - http://localhost:*

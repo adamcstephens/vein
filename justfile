@@ -11,6 +11,9 @@ lint:
 test *args:
     cargo test {{ args }}
 
+dev:
+    process-compose up -D
+
 # Release: just release 0.3.0
 release version:
     sed -i 's/^version = ".*"/version = "{{ version }}"/' Cargo.toml
