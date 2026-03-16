@@ -1,11 +1,11 @@
 ---
 # vein-jelp
 title: update_task tool
-status: todo
+status: completed
 type: feature
 priority: normal
 created_at: 2026-03-15T20:17:54Z
-updated_at: 2026-03-16T02:47:56Z
+updated_at: 2026-03-16T03:37:42Z
 parent: vein-rnzz
 blocked_by:
     - vein-258m
@@ -20,3 +20,5 @@ MCP tool: update an existing task's title, description, or labels.
 - labels are read-only on task; separate endpoint needed to modify them
 
 \n\n## Implementation Notes\n- Add a `vein tool <tool-name>` CLI subcommand that exercises the same logic as the MCP tool\n- Use the CLI subcommand for testing against the dev Vikunja instance (`just dev`)
+
+## Summary of Changes\n\n- Added `update_task` MCP tool with `UpdateTaskParams` (task_id, optional title, optional description)\n- Added `vein tool update-task <task_id> [-t title] [-d description]` CLI subcommand\n- Uses `update_task` client method with partial updates

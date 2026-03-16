@@ -40,6 +40,16 @@ pub struct CommentParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct UpdateTaskParams {
+    #[schemars(description = "Task ID")]
+    pub task_id: i64,
+    #[schemars(description = "New title (optional)")]
+    pub title: Option<String>,
+    #[schemars(description = "New description (optional)")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct AddRelationParams {
     #[schemars(description = "Task ID")]
     pub task_id: i64,
@@ -214,6 +224,28 @@ impl VeinServer {
             "Added {} relation: #{} -> #{}",
             relation.relation_kind, relation.task_id, relation.other_task_id
         ))
+    }
+
+    /// Update an existing task's title or description
+    #[tool(name = "update_task")]
+    async fn update_task(
+        &self,
+        Parameters(params): Parameters<UpdateTaskParams>,
+    ) -> Result<String, String> {
+        let task = self
+            .client
+            .update_task(
+                params.task_id,
+                crate::client::TaskUpdate {
+                    title: params.title,
+                    description: params.description,
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| format!("Failed to update task: {e}"))?;
+
+        Ok(format!("Updated task #{}: {}", task.id, task.title))
     }
 }
 

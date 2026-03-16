@@ -137,6 +137,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         relation.relation_kind, relation.task_id, relation.other_task_id
                     );
                 }
+                ToolCommand::UpdateTask {
+                    task_id,
+                    title,
+                    description,
+                } => {
+                    let task = client
+                        .update_task(
+                            task_id,
+                            vein::client::TaskUpdate {
+                                title,
+                                description,
+                                ..Default::default()
+                            },
+                        )
+                        .await?;
+                    println!("Updated task #{}: {}", task.id, task.title);
+                }
                 ToolCommand::CreateTask { title, description } => {
                     let task = client
                         .create_task(project_config.project_id, &title, &description)

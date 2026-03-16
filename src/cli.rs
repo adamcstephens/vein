@@ -64,6 +64,17 @@ pub enum ToolCommand {
         /// Comment text
         comment: String,
     },
+    /// Update an existing task's title or description
+    UpdateTask {
+        /// Task ID
+        task_id: i64,
+        /// New title
+        #[arg(short, long)]
+        title: Option<String>,
+        /// New description
+        #[arg(short, long)]
+        description: Option<String>,
+    },
     /// Add a relation between two tasks
     AddRelation {
         /// Task ID
@@ -197,6 +208,35 @@ mod tests {
                 assert_eq!(comment, "Work in progress");
             }
             other => panic!("expected Comment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_tool_update_task_subcommand() {
+        let cli = Cli::parse_from([
+            "vein",
+            "tool",
+            "update-task",
+            "42",
+            "-t",
+            "New title",
+            "-d",
+            "New desc",
+        ]);
+        match cli.command {
+            Some(Command::Tool {
+                tool:
+                    ToolCommand::UpdateTask {
+                        task_id,
+                        title,
+                        description,
+                    },
+            }) => {
+                assert_eq!(task_id, 42);
+                assert_eq!(title.as_deref(), Some("New title"));
+                assert_eq!(description.as_deref(), Some("New desc"));
+            }
+            other => panic!("expected UpdateTask, got {other:?}"),
         }
     }
 
