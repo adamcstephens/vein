@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rmcp::ServiceExt;
-use vein::client::{ClientError, ReqwestClient, TaskUpdate, VikunjaClient};
+use vein::client::{ReqwestClient, TaskUpdate, VikunjaClient};
 use vein::config::{ConnectionConfig, ProjectConfig};
 use vein::server::VeinServer;
 
@@ -25,7 +25,6 @@ fn vikunja_client() -> ReqwestClient {
 struct TestProject {
     pub id: i64,
     pub config: ProjectConfig,
-    client: ReqwestClient,
 }
 
 impl TestProject {
@@ -62,12 +61,24 @@ impl TestProject {
         Ok(TestProject {
             id: project.id,
             config,
-            client,
         })
     }
+}
 
-    async fn cleanup(self) -> Result<(), ClientError> {
-        self.client.delete_project(self.id).await
+impl Drop for TestProject {
+    fn drop(&mut self) {
+        let client = vikunja_client();
+        let id = self.id;
+        let handle = std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("failed to create cleanup runtime");
+            rt.block_on(async {
+                let _ = client.delete_project(id).await;
+            });
+        });
+        let _ = handle.join();
     }
 }
 
@@ -103,11 +114,6 @@ async fn initialize_and_list_tools() {
         tools.iter().any(|t| t.name == "list_ready"),
         "list_ready tool should be registered"
     );
-
-    test_project
-        .cleanup()
-        .await
-        .expect("failed to clean up test project");
 }
 
 #[tokio::test]
@@ -127,11 +133,6 @@ async fn server_reports_prompt_capabilities() {
         result.prompts.iter().any(|p| p.name == "orient"),
         "orient prompt should be registered"
     );
-
-    test_project
-        .cleanup()
-        .await
-        .expect("failed to clean up test project");
 }
 
 #[tokio::test]
@@ -160,11 +161,6 @@ async fn orient_prompt_returns_orientation() {
         text.contains("Workflow"),
         "orient should include workflow guidance"
     );
-
-    test_project
-        .cleanup()
-        .await
-        .expect("failed to clean up test project");
 }
 
 #[tokio::test]
@@ -181,11 +177,6 @@ async fn server_reports_tool_capabilities() {
         .expect("server should support tools/list");
 
     assert!(!result.tools.is_empty(), "should have at least one tool");
-
-    test_project
-        .cleanup()
-        .await
-        .expect("failed to clean up test project");
 }
 
 #[tokio::test]
@@ -254,11 +245,6 @@ async fn update_task_preserves_fields_not_in_update() {
     );
     assert_eq!(updated.priority, 3, "priority was wiped by partial update");
     assert!(updated.done);
-
-    test_project
-        .cleanup()
-        .await
-        .expect("failed to clean up test project");
 }
 
 #[tokio::test]
@@ -315,9 +301,4 @@ async fn claim_moves_task_to_in_progress_bucket() {
         !todo.iter().any(|t| t.id == task.id),
         "task should not be in the todo bucket after move"
     );
-
-    test_project
-        .cleanup()
-        .await
-        .expect("failed to clean up test project");
 }
