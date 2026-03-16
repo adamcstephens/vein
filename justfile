@@ -10,6 +10,8 @@ lint:
 
 test *args:
     cargo test --lib {{ args }}
+
+test-integration *args:
     cargo test --test mcp_integration {{ args }} -- --test-threads=1
 
 dev:

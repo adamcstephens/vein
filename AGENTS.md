@@ -10,7 +10,7 @@
 - tests pass
 - lints pass
 - you've checked any updated capabilities using `cargo run -- tool <name>`
-- nix build passes
+- nix build passes (background recommended)
 - changelog updated
 - ticket marked done
 - code committed with all ticket changes included
@@ -31,3 +31,4 @@
 
 ## Testing
 - Unit tests: `just test`
+- Integration tests: `just test-integration`
