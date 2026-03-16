@@ -1,7 +1,17 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use rmcp::ServiceExt;
 use vein::client::{ClientError, ReqwestClient, VikunjaClient};
 use vein::config::{ConnectionConfig, ProjectConfig};
 use vein::server::VeinServer;
+
+fn unique_project_name() -> String {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock went backwards")
+        .as_millis();
+    format!("vein-test-{}-{}", std::process::id(), ts)
+}
 
 /// Create a ReqwestClient from env vars, or panic if not set.
 fn vikunja_client() -> ReqwestClient {
@@ -20,8 +30,9 @@ struct TestProject {
 
 impl TestProject {
     async fn create(client: ReqwestClient) -> Result<Self, Box<dyn std::error::Error>> {
+        let name = unique_project_name();
         let project = client
-            .create_project("vein-integration-test", "Auto-created by integration tests")
+            .create_project(&name, "Auto-created by integration tests")
             .await?;
 
         let views = client.list_views(project.id).await?;
@@ -31,16 +42,21 @@ impl TestProject {
             .ok_or("no kanban view found on new project")?;
 
         let buckets = client.list_buckets(project.id, kanban_view.id).await?;
-        if buckets.len() < 3 {
-            return Err(format!("expected at least 3 buckets, found {}", buckets.len()).into());
-        }
+
+        let find_bucket = |needle: &str| -> Result<i64, Box<dyn std::error::Error>> {
+            buckets
+                .iter()
+                .find(|b| b.title.eq_ignore_ascii_case(needle))
+                .map(|b| b.id)
+                .ok_or_else(|| format!("no bucket named '{}' found", needle).into())
+        };
 
         let config = ProjectConfig {
             project_id: project.id,
             view_id: kanban_view.id,
-            todo_bucket_id: buckets[0].id,
-            inprogress_bucket_id: buckets[1].id,
-            done_bucket_id: buckets[2].id,
+            todo_bucket_id: find_bucket("To-Do")?,
+            inprogress_bucket_id: find_bucket("Doing")?,
+            done_bucket_id: find_bucket("Done")?,
         };
 
         Ok(TestProject {
@@ -119,12 +135,13 @@ async fn server_reports_tool_capabilities() {
 async fn create_and_delete_test_project() {
     let vikunja = vikunja_client();
 
+    let name = unique_project_name();
     let project = vikunja
-        .create_project("vein-integration-test", "Temp project for testing")
+        .create_project(&name, "Temp project for testing")
         .await
         .expect("failed to create project");
 
-    assert_eq!(project.title, "vein-integration-test");
+    assert_eq!(project.title, name);
 
     vikunja
         .delete_project(project.id)

@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Integration tests use unique project names and match buckets by title instead of index
+
 ### Added
 
 - `comment` MCP tool — add a comment to a task
