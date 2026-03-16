@@ -14,6 +14,12 @@ test *args:
 dev:
     process-compose up -D
 
+reset:
+    process-compose down || true
+    rm -f .services/vikunja/vikunja.db
+    rm -f .secret.envr
+    just dev
+
 # Release: just release 0.3.0
 release version:
     sed -i 's/^version = ".*"/version = "{{ version }}"/' Cargo.toml
