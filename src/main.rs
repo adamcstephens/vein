@@ -152,22 +152,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     task_id,
                     title,
                     description,
+                    priority,
                 } => {
+                    let priority = priority
+                        .map(|p| vein::server::parse_priority(&p))
+                        .transpose()?;
                     let task = client
                         .update_task(
                             task_id,
                             vein::client::TaskUpdate {
                                 title,
                                 description,
+                                priority,
                                 ..Default::default()
                             },
                         )
                         .await?;
                     println!("Updated task #{}: {}", task.id, task.title);
                 }
-                ToolCommand::CreateTask { title, description } => {
+                ToolCommand::CreateTask {
+                    title,
+                    description,
+                    priority,
+                } => {
+                    let priority = priority
+                        .map(|p| vein::server::parse_priority(&p))
+                        .transpose()?;
                     let task = client
-                        .create_task(project_config.project_id, &title, &description)
+                        .create_task(project_config.project_id, &title, &description, priority)
                         .await?;
                     println!("Created task #{}: {}", task.id, task.title);
                 }

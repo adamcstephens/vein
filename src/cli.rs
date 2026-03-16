@@ -73,7 +73,7 @@ pub enum ToolCommand {
         /// Comment text
         comment: String,
     },
-    /// Update an existing task's title or description
+    /// Update an existing task's title, description, or priority
     UpdateTask {
         /// Task ID
         task_id: i64,
@@ -83,6 +83,9 @@ pub enum ToolCommand {
         /// New description
         #[arg(short, long)]
         description: Option<String>,
+        /// Priority: none, low, medium, high, urgent
+        #[arg(short, long)]
+        priority: Option<String>,
     },
     /// Add a relation between two tasks
     AddRelation {
@@ -100,6 +103,9 @@ pub enum ToolCommand {
         /// Task description
         #[arg(short, long, default_value = "")]
         description: String,
+        /// Priority: none, low, medium, high, urgent
+        #[arg(short, long)]
+        priority: Option<String>,
     },
 }
 
@@ -279,6 +285,7 @@ mod tests {
                         task_id,
                         title,
                         description,
+                        ..
                     },
             }) => {
                 assert_eq!(task_id, 42);
@@ -314,7 +321,10 @@ mod tests {
         let cli = Cli::parse_from(["vein", "tool", "create-task", "Fix the bug"]);
         match cli.command {
             Some(Command::Tool {
-                tool: ToolCommand::CreateTask { title, description },
+                tool:
+                    ToolCommand::CreateTask {
+                        title, description, ..
+                    },
             }) => {
                 assert_eq!(title, "Fix the bug");
                 assert_eq!(description, "");
@@ -335,10 +345,30 @@ mod tests {
         ]);
         match cli.command {
             Some(Command::Tool {
-                tool: ToolCommand::CreateTask { title, description },
+                tool:
+                    ToolCommand::CreateTask {
+                        title, description, ..
+                    },
             }) => {
                 assert_eq!(title, "Fix the bug");
                 assert_eq!(description, "Something is broken");
+            }
+            other => panic!("expected CreateTask, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_tool_create_task_with_priority() {
+        let cli = Cli::parse_from(["vein", "tool", "create-task", "Urgent bug", "-p", "high"]);
+        match cli.command {
+            Some(Command::Tool {
+                tool:
+                    ToolCommand::CreateTask {
+                        title, priority, ..
+                    },
+            }) => {
+                assert_eq!(title, "Urgent bug");
+                assert_eq!(priority.as_deref(), Some("high"));
             }
             other => panic!("expected CreateTask, got {other:?}"),
         }

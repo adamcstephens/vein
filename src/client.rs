@@ -105,6 +105,7 @@ pub trait VikunjaClient {
         project_id: i64,
         title: &str,
         description: &str,
+        priority: Option<i64>,
     ) -> impl Future<Output = Result<Task, ClientError>> + Send;
     fn update_task(
         &self,
@@ -150,6 +151,7 @@ pub struct TaskUpdate {
     pub description: Option<String>,
     pub done: Option<bool>,
     pub bucket_id: Option<i64>,
+    pub priority: Option<i64>,
 }
 
 // --- Errors ---
@@ -231,6 +233,8 @@ struct CreateProjectPayload<'a> {
 struct CreateTaskPayload<'a> {
     title: &'a str,
     description: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    priority: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -243,6 +247,8 @@ struct UpdateTaskPayload {
     done: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     bucket_id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    priority: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -324,11 +330,16 @@ impl VikunjaClient for ReqwestClient {
         project_id: i64,
         title: &str,
         description: &str,
+        priority: Option<i64>,
     ) -> Result<Task, ClientError> {
         let resp = self
             .http
             .put(self.url(&format!("/projects/{project_id}/tasks")))
-            .json(&CreateTaskPayload { title, description })
+            .json(&CreateTaskPayload {
+                title,
+                description,
+                priority,
+            })
             .send()
             .await?;
         let resp = Self::check_response(resp).await?;
@@ -344,6 +355,7 @@ impl VikunjaClient for ReqwestClient {
                 description: updates.description,
                 done: updates.done,
                 bucket_id: updates.bucket_id,
+                priority: updates.priority,
             })
             .send()
             .await?;
@@ -471,6 +483,7 @@ mod tests {
             _project_id: i64,
             _title: &str,
             _description: &str,
+            _priority: Option<i64>,
         ) -> Result<Task, ClientError> {
             unimplemented!()
         }

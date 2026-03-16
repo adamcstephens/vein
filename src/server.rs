@@ -15,6 +15,19 @@ use rmcp::{
 use crate::client::{ReqwestClient, Task, VikunjaClient};
 use crate::config::ProjectConfig;
 
+pub fn parse_priority(s: &str) -> Result<i64, String> {
+    match s.to_lowercase().as_str() {
+        "none" => Ok(0),
+        "low" => Ok(1),
+        "medium" => Ok(2),
+        "high" => Ok(3),
+        "urgent" => Ok(4),
+        other => Err(format!(
+            "Unknown priority '{other}'. Valid values: none, low, medium, high, urgent"
+        )),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct VeinServer {
     client: ReqwestClient,
@@ -64,6 +77,8 @@ pub struct UpdateTaskParams {
     pub title: Option<String>,
     #[schemars(description = "New description (optional)")]
     pub description: Option<String>,
+    #[schemars(description = "Priority: none, low, medium, high, urgent (optional)")]
+    pub priority: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -84,6 +99,10 @@ pub struct CreateTaskParams {
     pub title: String,
     #[schemars(description = "Task description (optional)")]
     pub description: Option<String>,
+    #[schemars(
+        description = "Priority: none, low, medium, high, urgent (optional, defaults to none)"
+    )]
+    pub priority: Option<String>,
 }
 
 #[prompt_router]
@@ -128,8 +147,8 @@ You are connected to a Vikunja-backed issue tracker. Use the tools below to mana
 - **list_in_progress** — List tasks currently being worked on
 - **list_done** — List completed tasks
 - **get_task** — Get full task details (description, labels, relations, assignees)
-- **create_task** — Create a new task
-- **update_task** — Update a task's title or description
+- **create_task** — Create a new task (with optional priority)
+- **update_task** — Update a task's title, description, or priority
 - **claim** — Move a task to In Progress
 - **complete** — Mark a task as done
 - **comment** — Add a progress note to a task
@@ -181,9 +200,15 @@ impl VeinServer {
         Parameters(params): Parameters<CreateTaskParams>,
     ) -> Result<String, String> {
         let description = params.description.unwrap_or_default();
+        let priority = params.priority.map(|p| parse_priority(&p)).transpose()?;
         let task = self
             .client
-            .create_task(self.project_config.project_id, &params.title, &description)
+            .create_task(
+                self.project_config.project_id,
+                &params.title,
+                &description,
+                priority,
+            )
             .await
             .map_err(|e| format!("Failed to create task: {e}"))?;
 
@@ -313,12 +338,13 @@ impl VeinServer {
         ))
     }
 
-    /// Update an existing task's title or description
+    /// Update an existing task's title, description, or priority
     #[tool(name = "update_task")]
     async fn update_task(
         &self,
         Parameters(params): Parameters<UpdateTaskParams>,
     ) -> Result<String, String> {
+        let priority = params.priority.map(|p| parse_priority(&p)).transpose()?;
         let task = self
             .client
             .update_task(
@@ -326,6 +352,7 @@ impl VeinServer {
                 crate::client::TaskUpdate {
                     title: params.title,
                     description: params.description,
+                    priority,
                     ..Default::default()
                 },
             )
@@ -543,6 +570,31 @@ mod tests {
         assert!(!result.contains("Labels:"));
         assert!(!result.contains("Assignees:"));
         assert!(!result.contains("Relations:"));
+    }
+
+    #[test]
+    fn parse_priority_maps_strings_to_integers() {
+        assert_eq!(parse_priority("none"), Ok(0));
+        assert_eq!(parse_priority("low"), Ok(1));
+        assert_eq!(parse_priority("medium"), Ok(2));
+        assert_eq!(parse_priority("high"), Ok(3));
+        assert_eq!(parse_priority("urgent"), Ok(4));
+        assert_eq!(parse_priority("High"), Ok(3)); // case insensitive
+        assert!(parse_priority("invalid").is_err());
+    }
+
+    #[test]
+    fn create_task_params_accepts_priority() {
+        let json = r#"{"title": "Test", "priority": "high"}"#;
+        let params: CreateTaskParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.priority.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn update_task_params_accepts_priority() {
+        let json = r#"{"task_id": 1, "priority": "urgent"}"#;
+        let params: UpdateTaskParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.priority.as_deref(), Some("urgent"));
     }
 
     #[test]
