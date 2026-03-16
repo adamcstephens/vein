@@ -12,6 +12,9 @@ All notable changes to this project will be documented in this file.
 
 - `orient` MCP prompt — agent orientation with available tools, workflow guidance, and current task state
 - Priority support on `create_task` and `update_task` (none, low, medium, high, urgent)
+- `create_label` MCP tool — create a new label
+- `add_label` MCP tool — assign a label to a task
+- `list_labels` MCP tool — list all available labels
 - `list_tasks` MCP tool — list and search tasks with optional filters
 - `update_task` MCP tool — update a task's title or description
 - `add_relation` MCP tool — add a relation between two tasks

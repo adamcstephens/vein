@@ -132,6 +132,13 @@ pub trait VikunjaClient {
         project_id: i64,
         view_id: i64,
     ) -> impl Future<Output = Result<Vec<Bucket>, ClientError>> + Send;
+    fn create_label(&self, title: &str) -> impl Future<Output = Result<Label, ClientError>> + Send;
+    fn add_label_to_task(
+        &self,
+        task_id: i64,
+        label_id: i64,
+    ) -> impl Future<Output = Result<(), ClientError>> + Send;
+    fn list_labels(&self) -> impl Future<Output = Result<Vec<Label>, ClientError>> + Send;
     fn create_project(
         &self,
         title: &str,
@@ -221,6 +228,16 @@ impl ReqwestClient {
             Err(ClientError::Api { status, message })
         }
     }
+}
+
+#[derive(Serialize)]
+struct CreateLabelPayload<'a> {
+    title: &'a str,
+}
+
+#[derive(Serialize)]
+struct AddLabelPayload {
+    label_id: i64,
 }
 
 #[derive(Serialize)]
@@ -421,6 +438,34 @@ impl VikunjaClient for ReqwestClient {
         Ok(resp.json().await?)
     }
 
+    async fn create_label(&self, title: &str) -> Result<Label, ClientError> {
+        let resp = self
+            .http
+            .put(self.url("/labels"))
+            .json(&CreateLabelPayload { title })
+            .send()
+            .await?;
+        let resp = Self::check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    async fn add_label_to_task(&self, task_id: i64, label_id: i64) -> Result<(), ClientError> {
+        let resp = self
+            .http
+            .put(self.url(&format!("/tasks/{task_id}/labels")))
+            .json(&AddLabelPayload { label_id })
+            .send()
+            .await?;
+        Self::check_response(resp).await?;
+        Ok(())
+    }
+
+    async fn list_labels(&self) -> Result<Vec<Label>, ClientError> {
+        let resp = self.http.get(self.url("/labels")).send().await?;
+        let resp = Self::check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
     async fn create_project(&self, title: &str, description: &str) -> Result<Project, ClientError> {
         let resp = self
             .http
@@ -517,6 +562,19 @@ mod tests {
             _project_id: i64,
             _view_id: i64,
         ) -> Result<Vec<Bucket>, ClientError> {
+            unimplemented!()
+        }
+        async fn create_label(&self, _title: &str) -> Result<Label, ClientError> {
+            unimplemented!()
+        }
+        async fn add_label_to_task(
+            &self,
+            _task_id: i64,
+            _label_id: i64,
+        ) -> Result<(), ClientError> {
+            unimplemented!()
+        }
+        async fn list_labels(&self) -> Result<Vec<Label>, ClientError> {
             unimplemented!()
         }
         async fn create_project(

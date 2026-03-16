@@ -30,7 +30,7 @@ processes:
         TOKEN=$(curl -sf -X PUT localhost:3456/api/v1/tokens \
           -H "Authorization: Bearer $JWT" \
           -H 'Content-Type: application/json' \
-          -d '{"title":"dev-token","permissions":{"projects":["read_all","create","update","delete"],"tasks":["read_all","create","update","delete"]},"expires_at":"2030-01-01T00:00:00Z"}' \
+          -d '{"title":"dev-token","permissions":{"projects":["read_all","create","update","delete"],"tasks":["read_all","create","update","delete"],"labels":["read_all","create"],"tasks_labels":["create"]},"expires_at":"2030-01-01T00:00:00Z"}' \
           | gojq -r '.token')
         echo "export VIKUNJA_API_TOKEN=\"$TOKEN\"" >> "$ENVRC"
         echo "API token written to .secret.envrc"

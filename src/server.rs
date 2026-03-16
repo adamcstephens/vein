@@ -82,6 +82,20 @@ pub struct UpdateTaskParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct CreateLabelParams {
+    #[schemars(description = "Label title")]
+    pub title: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct AddLabelParams {
+    #[schemars(description = "Task ID")]
+    pub task_id: i64,
+    #[schemars(description = "Label ID to assign")]
+    pub label_id: i64,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct AddRelationParams {
     #[schemars(description = "Task ID")]
     pub task_id: i64,
@@ -153,6 +167,9 @@ You are connected to a Vikunja-backed issue tracker. Use the tools below to mana
 - **complete** — Mark a task as done
 - **comment** — Add a progress note to a task
 - **add_relation** — Add a relation between tasks (blocked, blocking, subtask, etc.)
+- **create_label** — Create a new label
+- **add_label** — Assign a label to a task
+- **list_labels** — List all available labels
 
 ## Workflow
 
@@ -360,6 +377,58 @@ impl VeinServer {
             .map_err(|e| format!("Failed to update task: {e}"))?;
 
         Ok(format!("Updated task #{}: {}", task.id, task.title))
+    }
+
+    /// Create a new label
+    #[tool(name = "create_label")]
+    async fn create_label(
+        &self,
+        Parameters(params): Parameters<CreateLabelParams>,
+    ) -> Result<String, String> {
+        let label = self
+            .client
+            .create_label(&params.title)
+            .await
+            .map_err(|e| format!("Failed to create label: {e}"))?;
+
+        Ok(format!("Created label #{}: {}", label.id, label.title))
+    }
+
+    /// Add a label to a task
+    #[tool(name = "add_label")]
+    async fn add_label(
+        &self,
+        Parameters(params): Parameters<AddLabelParams>,
+    ) -> Result<String, String> {
+        self.client
+            .add_label_to_task(params.task_id, params.label_id)
+            .await
+            .map_err(|e| format!("Failed to add label: {e}"))?;
+
+        Ok(format!(
+            "Added label #{} to task #{}",
+            params.label_id, params.task_id
+        ))
+    }
+
+    /// List all available labels
+    #[tool(name = "list_labels")]
+    async fn list_labels(&self) -> Result<String, String> {
+        let labels = self
+            .client
+            .list_labels()
+            .await
+            .map_err(|e| format!("Failed to list labels: {e}"))?;
+
+        if labels.is_empty() {
+            return Ok("No labels found.".to_string());
+        }
+
+        let lines: Vec<String> = labels
+            .iter()
+            .map(|l| format!("- #{}: {}", l.id, l.title))
+            .collect();
+        Ok(lines.join("\n"))
     }
 
     /// List and search tasks across all buckets with optional filters

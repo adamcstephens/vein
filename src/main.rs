@@ -135,6 +135,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let result = client.create_comment(task_id, &comment).await?;
                     println!("Added comment #{} to task #{}", result.id, task_id);
                 }
+                ToolCommand::CreateLabel { title } => {
+                    let label = client.create_label(&title).await?;
+                    println!("Created label #{}: {}", label.id, label.title);
+                }
+                ToolCommand::AddLabel { task_id, label_id } => {
+                    client.add_label_to_task(task_id, label_id).await?;
+                    println!("Added label #{label_id} to task #{task_id}");
+                }
+                ToolCommand::ListLabels => {
+                    let labels = client.list_labels().await?;
+                    if labels.is_empty() {
+                        println!("No labels found.");
+                    } else {
+                        for label in labels {
+                            println!("- #{}: {}", label.id, label.title);
+                        }
+                    }
+                }
                 ToolCommand::AddRelation {
                     task_id,
                     other_task_id,

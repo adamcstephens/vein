@@ -87,6 +87,20 @@ pub enum ToolCommand {
         #[arg(short, long)]
         priority: Option<String>,
     },
+    /// Create a new label
+    CreateLabel {
+        /// Label title
+        title: String,
+    },
+    /// Add a label to a task
+    AddLabel {
+        /// Task ID
+        task_id: i64,
+        /// Label ID
+        label_id: i64,
+    },
+    /// List all available labels
+    ListLabels,
     /// Add a relation between two tasks
     AddRelation {
         /// Task ID

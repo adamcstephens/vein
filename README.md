@@ -14,6 +14,8 @@ In your Vikunja instance, go to **Settings > API Tokens** and create a token wit
 | `projects_views_tasks` | `read_all` |
 | `tasks_relations` | `create` |
 | `tasks_comments` | `create` |
+| `labels` | `read_all`, `create` |
+| `tasks_labels` | `create` |
 
 `vein init` also needs `projects` (`read_all`) and `projects_views` (`read_all`) to discover your project and bucket IDs. You can add these temporarily or use a broader token for setup.
 
@@ -66,6 +68,9 @@ vein tool complete 42
 vein tool comment 42 "Started working on this"
 vein tool update-task 42 -t "New title"
 vein tool add-relation 1 2 blocked
+vein tool create-label "bug"
+vein tool add-label 42 1
+vein tool list-labels
 ```
 
 ## Development
@@ -96,6 +101,8 @@ The provisioned token grants access to project-scoped Vikunja endpoints:
 |-------|-------------|
 | `projects` | `read_all`, `create`, `update`, `delete` |
 | `tasks` | `read_all`, `create`, `update`, `delete` |
+| `labels` | `read_all`, `create` |
+| `tasks_labels` | `create` |
 
 Global endpoints like `/api/v1/tasks/all` and `/api/v1/user` are **not** accessible with scoped tokens — use JWT auth (`POST /api/v1/login`) for those.
 
