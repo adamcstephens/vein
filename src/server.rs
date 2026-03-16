@@ -1,8 +1,8 @@
 use rmcp::{
     ServerHandler,
-    handler::server::router::tool::ToolRouter,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{ServerCapabilities, ServerInfo},
-    tool, tool_handler, tool_router,
+    schemars, tool, tool_handler, tool_router,
 };
 
 use crate::client::{ReqwestClient, Task, VikunjaClient};
@@ -25,6 +25,14 @@ impl VeinServer {
     }
 }
 
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct CreateTaskParams {
+    #[schemars(description = "Task title")]
+    pub title: String,
+    #[schemars(description = "Task description (optional)")]
+    pub description: Option<String>,
+}
+
 #[tool_router]
 impl VeinServer {
     /// List tasks that are ready to be worked on (in the Todo bucket)
@@ -41,6 +49,22 @@ impl VeinServer {
             .map_err(|e| format!("Failed to list tasks: {e}"))?;
 
         Ok(format_task_list(&tasks, "No tasks ready to be worked on."))
+    }
+
+    /// Create a new task in the project
+    #[tool(name = "create_task")]
+    async fn create_task(
+        &self,
+        Parameters(params): Parameters<CreateTaskParams>,
+    ) -> Result<String, String> {
+        let description = params.description.unwrap_or_default();
+        let task = self
+            .client
+            .create_task(self.project_config.project_id, &params.title, &description)
+            .await
+            .map_err(|e| format!("Failed to create task: {e}"))?;
+
+        Ok(format!("Created task #{}: {}", task.id, task.title))
     }
 }
 

@@ -38,6 +38,14 @@ pub enum Command {
 pub enum ToolCommand {
     /// List tasks ready to be worked on (Todo bucket)
     ListReady,
+    /// Create a new task in the project
+    CreateTask {
+        /// Task title
+        title: String,
+        /// Task description
+        #[arg(short, long, default_value = "")]
+        description: String,
+    },
 }
 
 #[cfg(test)]
@@ -86,6 +94,41 @@ mod tests {
                 tool: ToolCommand::ListReady
             })
         ));
+    }
+
+    #[test]
+    fn parses_tool_create_task_subcommand() {
+        let cli = Cli::parse_from(["vein", "tool", "create-task", "Fix the bug"]);
+        match cli.command {
+            Some(Command::Tool {
+                tool: ToolCommand::CreateTask { title, description },
+            }) => {
+                assert_eq!(title, "Fix the bug");
+                assert_eq!(description, "");
+            }
+            other => panic!("expected CreateTask, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_tool_create_task_with_description() {
+        let cli = Cli::parse_from([
+            "vein",
+            "tool",
+            "create-task",
+            "Fix the bug",
+            "-d",
+            "Something is broken",
+        ]);
+        match cli.command {
+            Some(Command::Tool {
+                tool: ToolCommand::CreateTask { title, description },
+            }) => {
+                assert_eq!(title, "Fix the bug");
+                assert_eq!(description, "Something is broken");
+            }
+            other => panic!("expected CreateTask, got {other:?}"),
+        }
     }
 
     #[test]

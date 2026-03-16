@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `create_task` MCP tool — create a new task with title and optional description
 - `list_ready` MCP tool — list tasks in the Todo bucket
 - MCP stdio server (run with `vein serve` or just `vein`)
 - `vein list-projects` — list available Vikunja projects

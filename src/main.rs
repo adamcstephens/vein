@@ -68,6 +68,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         format_task_list(&tasks, "No tasks ready to be worked on.")
                     );
                 }
+                ToolCommand::CreateTask { title, description } => {
+                    let task = client
+                        .create_task(project_config.project_id, &title, &description)
+                        .await?;
+                    println!("Created task #{}: {}", task.id, task.title);
+                }
             }
             Ok(())
         }

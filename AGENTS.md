@@ -9,6 +9,7 @@
 ## Definition of done
 - tests pass
 - lints pass
+- you've checked any updated capabilities using `cargo run -- tool <name>`
 - nix build passes
 - changelog updated
 - ticket marked done
