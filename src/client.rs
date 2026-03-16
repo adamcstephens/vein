@@ -19,6 +19,14 @@ pub struct Label {
     pub title: String,
 }
 
+fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::deserialize(deserializer)?.unwrap_or_default())
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Task {
     pub id: i64,
@@ -28,11 +36,11 @@ pub struct Task {
     pub project_id: i64,
     pub bucket_id: i64,
     pub priority: i64,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub labels: Vec<Label>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub assignees: Vec<User>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub related_tasks: HashMap<String, Vec<Task>>,
 }
 
@@ -76,52 +84,55 @@ pub struct Project {
 // --- Trait ---
 
 pub trait VikunjaClient {
-    fn list_projects(&self) -> impl Future<Output = Result<Vec<Project>, ClientError>>;
-    fn get_user(&self) -> impl Future<Output = Result<User, ClientError>>;
-    fn get_task(&self, task_id: i64) -> impl Future<Output = Result<Task, ClientError>>;
+    fn list_projects(&self) -> impl Future<Output = Result<Vec<Project>, ClientError>> + Send;
+    fn get_user(&self) -> impl Future<Output = Result<User, ClientError>> + Send;
+    fn get_task(&self, task_id: i64) -> impl Future<Output = Result<Task, ClientError>> + Send;
     fn list_bucket_tasks(
         &self,
         project_id: i64,
         view_id: i64,
         bucket_id: i64,
-    ) -> impl Future<Output = Result<Vec<Task>, ClientError>>;
+    ) -> impl Future<Output = Result<Vec<Task>, ClientError>> + Send;
     fn create_task(
         &self,
         project_id: i64,
         title: &str,
         description: &str,
-    ) -> impl Future<Output = Result<Task, ClientError>>;
+    ) -> impl Future<Output = Result<Task, ClientError>> + Send;
     fn update_task(
         &self,
         task_id: i64,
         updates: TaskUpdate,
-    ) -> impl Future<Output = Result<Task, ClientError>>;
+    ) -> impl Future<Output = Result<Task, ClientError>> + Send;
     fn create_relation(
         &self,
         task_id: i64,
         other_task_id: i64,
         relation_kind: &str,
-    ) -> impl Future<Output = Result<TaskRelation, ClientError>>;
+    ) -> impl Future<Output = Result<TaskRelation, ClientError>> + Send;
     fn create_comment(
         &self,
         task_id: i64,
         comment: &str,
-    ) -> impl Future<Output = Result<TaskComment, ClientError>>;
+    ) -> impl Future<Output = Result<TaskComment, ClientError>> + Send;
     fn list_views(
         &self,
         project_id: i64,
-    ) -> impl Future<Output = Result<Vec<ProjectView>, ClientError>>;
+    ) -> impl Future<Output = Result<Vec<ProjectView>, ClientError>> + Send;
     fn list_buckets(
         &self,
         project_id: i64,
         view_id: i64,
-    ) -> impl Future<Output = Result<Vec<Bucket>, ClientError>>;
+    ) -> impl Future<Output = Result<Vec<Bucket>, ClientError>> + Send;
     fn create_project(
         &self,
         title: &str,
         description: &str,
-    ) -> impl Future<Output = Result<Project, ClientError>>;
-    fn delete_project(&self, project_id: i64) -> impl Future<Output = Result<(), ClientError>>;
+    ) -> impl Future<Output = Result<Project, ClientError>> + Send;
+    fn delete_project(
+        &self,
+        project_id: i64,
+    ) -> impl Future<Output = Result<(), ClientError>> + Send;
 }
 
 // --- Update payload ---
@@ -161,6 +172,7 @@ impl From<reqwest::Error> for ClientError {
 
 // --- ReqwestClient ---
 
+#[derive(Debug, Clone)]
 pub struct ReqwestClient {
     http: reqwest::Client,
     base_url: String,

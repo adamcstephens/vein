@@ -1,11 +1,11 @@
 use clap::Parser;
 use rmcp::ServiceExt;
 
-use vein::cli::{Cli, Command};
+use vein::cli::{Cli, Command, ToolCommand};
 use vein::client::{ReqwestClient, VikunjaClient};
-use vein::config::ConnectionConfig;
+use vein::config::{ConnectionConfig, ProjectConfig};
 use vein::init;
-use vein::server::VeinServer;
+use vein::server::{VeinServer, format_task_list};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -50,8 +50,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Ok(())
         }
+        Some(Command::Tool { tool }) => {
+            let conn_config = ConnectionConfig::from_env()?;
+            let project_config = ProjectConfig::from_env()?;
+            let client = ReqwestClient::new(&conn_config)?;
+            match tool {
+                ToolCommand::ListReady => {
+                    let tasks = client
+                        .list_bucket_tasks(
+                            project_config.project_id,
+                            project_config.view_id,
+                            project_config.todo_bucket_id,
+                        )
+                        .await?;
+                    println!(
+                        "{}",
+                        format_task_list(&tasks, "No tasks ready to be worked on.")
+                    );
+                }
+            }
+            Ok(())
+        }
         Some(Command::Serve) | None => {
-            let server = VeinServer::new();
+            let conn_config = ConnectionConfig::from_env()?;
+            let project_config = ProjectConfig::from_env()?;
+            let client = ReqwestClient::new(&conn_config)?;
+            let server = VeinServer::new(client, project_config);
             let service = server.serve(rmcp::transport::io::stdio()).await?;
             service.waiting().await?;
             Ok(())

@@ -5,7 +5,7 @@ status: todo
 type: feature
 priority: normal
 created_at: 2026-03-15T20:17:54Z
-updated_at: 2026-03-15T20:52:09Z
+updated_at: 2026-03-16T02:47:55Z
 parent: vein-rnzz
 blocked_by:
     - vein-258m
@@ -18,3 +18,5 @@ MCP tool: add a relation between two tasks using Vikunja's native relation types
 - PUT /tasks/{taskID}/relations
 - Body: { other_task_id, relation_kind }
 - Native relation kinds: blocked, blocking, related, subtask, parenttask, duplicateof, duplicates, precedes, follows, copiedfrom, copiedto
+
+\n\n## Implementation Notes\n- Add a `vein tool <tool-name>` CLI subcommand that exercises the same logic as the MCP tool\n- Use the CLI subcommand for testing against the dev Vikunja instance (`just dev`)

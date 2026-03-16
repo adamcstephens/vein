@@ -27,6 +27,17 @@ pub enum Command {
     },
     /// Run as MCP stdio server (default if no subcommand given)
     Serve,
+    /// Run an MCP tool directly from the CLI
+    Tool {
+        #[command(subcommand)]
+        tool: ToolCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ToolCommand {
+    /// List tasks ready to be worked on (Todo bucket)
+    ListReady,
 }
 
 #[cfg(test)]
@@ -62,6 +73,17 @@ mod tests {
             Some(Command::ListProjectViewBuckets {
                 project_id: 5,
                 view_id: 10
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_tool_list_ready_subcommand() {
+        let cli = Cli::parse_from(["vein", "tool", "list-ready"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Tool {
+                tool: ToolCommand::ListReady
             })
         ));
     }

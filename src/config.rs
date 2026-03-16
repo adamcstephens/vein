@@ -6,7 +6,7 @@ pub struct ConnectionConfig {
     pub vikunja_api_token: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ProjectConfig {
     pub project_id: i64,
     pub view_id: i64,

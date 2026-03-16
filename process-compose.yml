@@ -45,9 +45,17 @@ processes:
           -d '{"title":"vein-dev"}')
         PROJECT_ID=$(echo "$PROJECT" | gojq -r '.id')
         VIEW_ID=$(echo "$PROJECT" | gojq -r '[.views[] | select(.view_kind == "kanban")][0].id')
+        BUCKETS=$(curl -sf "localhost:3456/api/v1/projects/$PROJECT_ID/views/$VIEW_ID/buckets" \
+          -H "Authorization: Bearer $JWT")
+        TODO_BUCKET_ID=$(echo "$BUCKETS" | gojq -r '.[0].id')
+        INPROGRESS_BUCKET_ID=$(echo "$BUCKETS" | gojq -r '.[1].id')
+        DONE_BUCKET_ID=$(echo "$BUCKETS" | gojq -r '.[2].id')
         echo "export VIKUNJA_PROJECT_ID=\"$PROJECT_ID\"" >> "$ENVRC"
         echo "export VIKUNJA_VIEW_ID=\"$VIEW_ID\"" >> "$ENVRC"
-        echo "Dev project created (project=$PROJECT_ID, view=$VIEW_ID)"
+        echo "export VIKUNJA_TODO_BUCKET_ID=\"$TODO_BUCKET_ID\"" >> "$ENVRC"
+        echo "export VIKUNJA_INPROGRESS_BUCKET_ID=\"$INPROGRESS_BUCKET_ID\"" >> "$ENVRC"
+        echo "export VIKUNJA_DONE_BUCKET_ID=\"$DONE_BUCKET_ID\"" >> "$ENVRC"
+        echo "Dev project created (project=$PROJECT_ID, view=$VIEW_ID, buckets=$TODO_BUCKET_ID/$INPROGRESS_BUCKET_ID/$DONE_BUCKET_ID)"
       fi
 
       echo "Done — run: direnv allow"
