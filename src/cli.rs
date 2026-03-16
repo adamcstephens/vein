@@ -64,6 +64,15 @@ pub enum ToolCommand {
         /// Comment text
         comment: String,
     },
+    /// Add a relation between two tasks
+    AddRelation {
+        /// Task ID
+        task_id: i64,
+        /// Other task ID to relate to
+        other_task_id: i64,
+        /// Relation kind (blocked, blocking, related, subtask, parenttask, etc.)
+        relation_kind: String,
+    },
     /// Create a new task in the project
     CreateTask {
         /// Task title
@@ -188,6 +197,26 @@ mod tests {
                 assert_eq!(comment, "Work in progress");
             }
             other => panic!("expected Comment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_tool_add_relation_subcommand() {
+        let cli = Cli::parse_from(["vein", "tool", "add-relation", "1", "2", "blocked"]);
+        match cli.command {
+            Some(Command::Tool {
+                tool:
+                    ToolCommand::AddRelation {
+                        task_id,
+                        other_task_id,
+                        relation_kind,
+                    },
+            }) => {
+                assert_eq!(task_id, 1);
+                assert_eq!(other_task_id, 2);
+                assert_eq!(relation_kind, "blocked");
+            }
+            other => panic!("expected AddRelation, got {other:?}"),
         }
     }
 

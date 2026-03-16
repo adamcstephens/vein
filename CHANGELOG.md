@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `add_relation` MCP tool — add a relation between two tasks
 - `complete` MCP tool — mark a task as done
 - `claim` MCP tool — claim a task by moving it to In Progress
 - `comment` MCP tool — add a comment to a task

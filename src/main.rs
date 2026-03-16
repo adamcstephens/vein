@@ -124,6 +124,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let result = client.create_comment(task_id, &comment).await?;
                     println!("Added comment #{} to task #{}", result.id, task_id);
                 }
+                ToolCommand::AddRelation {
+                    task_id,
+                    other_task_id,
+                    relation_kind,
+                } => {
+                    let relation = client
+                        .create_relation(task_id, other_task_id, &relation_kind)
+                        .await?;
+                    println!(
+                        "Added {} relation: #{} -> #{}",
+                        relation.relation_kind, relation.task_id, relation.other_task_id
+                    );
+                }
                 ToolCommand::CreateTask { title, description } => {
                     let task = client
                         .create_task(project_config.project_id, &title, &description)

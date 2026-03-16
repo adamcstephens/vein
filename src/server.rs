@@ -40,6 +40,18 @@ pub struct CommentParams {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct AddRelationParams {
+    #[schemars(description = "Task ID")]
+    pub task_id: i64,
+    #[schemars(description = "Other task ID to relate to")]
+    pub other_task_id: i64,
+    #[schemars(
+        description = "Relation kind: blocked, blocking, related, subtask, parenttask, duplicateof, duplicates, precedes, follows, copiedfrom, copiedto"
+    )]
+    pub relation_kind: String,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct CreateTaskParams {
     #[schemars(description = "Task title")]
     pub title: String,
@@ -184,6 +196,24 @@ impl VeinServer {
             .map_err(|e| format!("Failed to complete task: {e}"))?;
 
         Ok(format!("Completed task #{}: {}", task.id, task.title))
+    }
+
+    /// Add a relation between two tasks
+    #[tool(name = "add_relation")]
+    async fn add_relation(
+        &self,
+        Parameters(params): Parameters<AddRelationParams>,
+    ) -> Result<String, String> {
+        let relation = self
+            .client
+            .create_relation(params.task_id, params.other_task_id, &params.relation_kind)
+            .await
+            .map_err(|e| format!("Failed to add relation: {e}"))?;
+
+        Ok(format!(
+            "Added {} relation: #{} -> #{}",
+            relation.relation_kind, relation.task_id, relation.other_task_id
+        ))
     }
 }
 
