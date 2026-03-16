@@ -47,6 +47,11 @@ pub enum ToolCommand {
     ListInProgress,
     /// List completed tasks
     ListDone,
+    /// Claim a task (move to In Progress)
+    Claim {
+        /// Task ID
+        task_id: i64,
+    },
     /// Add a comment to a task
     Comment {
         /// Task ID
@@ -141,6 +146,17 @@ mod tests {
             cli.command,
             Some(Command::Tool {
                 tool: ToolCommand::ListDone
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_tool_claim_subcommand() {
+        let cli = Cli::parse_from(["vein", "tool", "claim", "42"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Tool {
+                tool: ToolCommand::Claim { task_id: 42 }
             })
         ));
     }

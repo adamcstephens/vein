@@ -145,6 +145,24 @@ impl VeinServer {
             comment.id, params.task_id
         ))
     }
+
+    /// Claim a task by moving it to the In Progress bucket
+    #[tool(name = "claim")]
+    async fn claim(&self, Parameters(params): Parameters<TaskIdParams>) -> Result<String, String> {
+        let task = self
+            .client
+            .update_task(
+                params.task_id,
+                crate::client::TaskUpdate {
+                    bucket_id: Some(self.project_config.inprogress_bucket_id),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(|e| format!("Failed to claim task: {e}"))?;
+
+        Ok(format!("Claimed task #{}: {}", task.id, task.title))
+    }
 }
 
 pub fn format_task_list(tasks: &[Task], empty_message: &str) -> String {
