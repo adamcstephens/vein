@@ -101,13 +101,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("{}", format_task_detail(&task));
                 }
                 ToolCommand::Claim { task_id } => {
-                    let task = client
-                        .update_task(
+                    let task = client.get_task(task_id).await?;
+                    client
+                        .move_task_to_bucket(
+                            project_config.project_id,
+                            project_config.view_id,
+                            project_config.inprogress_bucket_id,
                             task_id,
-                            vein::client::TaskUpdate {
-                                bucket_id: Some(project_config.inprogress_bucket_id),
-                                ..Default::default()
-                            },
                         )
                         .await?;
                     println!("Claimed task #{}: {}", task.id, task.title);
@@ -118,9 +118,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             task_id,
                             vein::client::TaskUpdate {
                                 done: Some(true),
-                                bucket_id: Some(project_config.done_bucket_id),
                                 ..Default::default()
                             },
+                        )
+                        .await?;
+                    client
+                        .move_task_to_bucket(
+                            project_config.project_id,
+                            project_config.view_id,
+                            project_config.done_bucket_id,
+                            task_id,
                         )
                         .await?;
                     println!("Completed task #{}: {}", task.id, task.title);

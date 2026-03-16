@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Provision script: fix login username typo and invalid API token permission group
+- Provision script: add error handling to prevent writing empty values to `.secret.envrc`
+- Integration tests run sequentially to avoid Vikunja SQLite concurrency issues
 - `update_task` no longer zeroes out fields not included in the update (e.g. description, priority)
 - Integration tests use unique project names and match buckets by title instead of index
 

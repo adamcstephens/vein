@@ -10,6 +10,7 @@ In your Vikunja instance, go to **Settings > API Tokens** and create a token wit
 
 | Group | Permissions |
 |-------|-------------|
+| `projects` | `read_one`, `views_buckets`, `views_buckets_tasks` |
 | `tasks` | `read_one`, `create`, `update` |
 | `projects_views_tasks` | `read_all` |
 | `tasks_relations` | `create` |
@@ -39,12 +40,41 @@ export VIKUNJA_INPROGRESS_BUCKET_ID="3"
 export VIKUNJA_DONE_BUCKET_ID="4"
 ```
 
-### 3. Run
+### 3. Connect to Claude Code
 
-As an MCP stdio server (for use with AI agents):
+Add vein as an MCP server in your project's `.mcp.json`:
 
-```sh
-vein serve  # or just: vein
+```json
+{
+  "mcpServers": {
+    "vein": {
+      "command": "vein",
+      "args": ["serve"],
+      "env": {
+        "VIKUNJA_URL": "https://your-vikunja-instance.example.com",
+        "VIKUNJA_API_TOKEN": "tk_...",
+        "VIKUNJA_PROJECT_ID": "1",
+        "VIKUNJA_VIEW_ID": "10",
+        "VIKUNJA_TODO_BUCKET_ID": "2",
+        "VIKUNJA_INPROGRESS_BUCKET_ID": "3",
+        "VIKUNJA_DONE_BUCKET_ID": "4"
+      }
+    }
+  }
+}
+```
+
+If you use direnv to manage these environment variables, you can omit the `env` block:
+
+```json
+{
+  "mcpServers": {
+    "vein": {
+      "command": "vein",
+      "args": ["serve"]
+    }
+  }
+}
 ```
 
 ### Agent orientation
@@ -99,10 +129,11 @@ The provisioned token grants access to project-scoped Vikunja endpoints:
 
 | Group | Permissions |
 |-------|-------------|
-| `projects` | `read_all`, `create`, `update`, `delete` |
-| `tasks` | `read_all`, `create`, `update`, `delete` |
+| `projects` | `read_all`, `read_one`, `create`, `update`, `delete`, `views_buckets`, `views_buckets_tasks` |
+| `tasks` | `read_all`, `read_one`, `create`, `update`, `delete` |
 | `labels` | `read_all`, `create` |
 | `tasks_labels` | `create` |
+| `projects_views_tasks` | `read_all` |
 
 Global endpoints like `/api/v1/tasks/all` and `/api/v1/user` are **not** accessible with scoped tokens — use JWT auth (`POST /api/v1/login`) for those.
 

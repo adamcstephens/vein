@@ -148,6 +148,13 @@ pub trait VikunjaClient {
         &self,
         project_id: i64,
     ) -> impl Future<Output = Result<(), ClientError>> + Send;
+    fn move_task_to_bucket(
+        &self,
+        project_id: i64,
+        view_id: i64,
+        bucket_id: i64,
+        task_id: i64,
+    ) -> impl Future<Output = Result<(), ClientError>> + Send;
 }
 
 // --- Update payload ---
@@ -157,7 +164,6 @@ pub struct TaskUpdate {
     pub title: Option<String>,
     pub description: Option<String>,
     pub done: Option<bool>,
-    pub bucket_id: Option<i64>,
     pub priority: Option<i64>,
 }
 
@@ -259,7 +265,6 @@ struct UpdateTaskPayload {
     title: String,
     description: String,
     done: bool,
-    bucket_id: i64,
     priority: i64,
 }
 
@@ -271,7 +276,6 @@ impl UpdateTaskPayload {
                 .description
                 .unwrap_or_else(|| task.description.clone()),
             done: updates.done.unwrap_or(task.done),
-            bucket_id: updates.bucket_id.unwrap_or(task.bucket_id),
             priority: updates.priority.unwrap_or(task.priority),
         }
     }
@@ -286,6 +290,11 @@ struct CreateRelationPayload<'a> {
 #[derive(Serialize)]
 struct CreateCommentPayload<'a> {
     comment: &'a str,
+}
+
+#[derive(Serialize)]
+struct MoveTaskToBucketPayload {
+    task_id: i64,
 }
 
 impl VikunjaClient for ReqwestClient {
@@ -491,6 +500,25 @@ impl VikunjaClient for ReqwestClient {
         Self::check_response(resp).await?;
         Ok(())
     }
+
+    async fn move_task_to_bucket(
+        &self,
+        project_id: i64,
+        view_id: i64,
+        bucket_id: i64,
+        task_id: i64,
+    ) -> Result<(), ClientError> {
+        let resp = self
+            .http
+            .post(self.url(&format!(
+                "/projects/{project_id}/views/{view_id}/buckets/{bucket_id}/tasks"
+            )))
+            .json(&MoveTaskToBucketPayload { task_id })
+            .send()
+            .await?;
+        Self::check_response(resp).await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -590,6 +618,15 @@ mod tests {
             unimplemented!()
         }
         async fn delete_project(&self, _project_id: i64) -> Result<(), ClientError> {
+            unimplemented!()
+        }
+        async fn move_task_to_bucket(
+            &self,
+            _project_id: i64,
+            _view_id: i64,
+            _bucket_id: i64,
+            _task_id: i64,
+        ) -> Result<(), ClientError> {
             unimplemented!()
         }
     }
@@ -739,14 +776,12 @@ mod tests {
         let task = make_task();
         let updates = TaskUpdate {
             done: Some(true),
-            bucket_id: Some(20),
             ..Default::default()
         };
         let payload = UpdateTaskPayload::from_task_with_updates(&task, updates);
         assert_eq!(payload.title, "Original title");
         assert_eq!(payload.description, "Original description");
         assert!(payload.done);
-        assert_eq!(payload.bucket_id, 20);
         assert_eq!(payload.priority, 3);
     }
 
@@ -757,14 +792,12 @@ mod tests {
             title: Some("New title".to_string()),
             description: Some("New description".to_string()),
             done: Some(true),
-            bucket_id: Some(99),
             priority: Some(1),
         };
         let payload = UpdateTaskPayload::from_task_with_updates(&task, updates);
         assert_eq!(payload.title, "New title");
         assert_eq!(payload.description, "New description");
         assert!(payload.done);
-        assert_eq!(payload.bucket_id, 99);
         assert_eq!(payload.priority, 1);
     }
 

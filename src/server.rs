@@ -295,12 +295,16 @@ impl VeinServer {
     async fn claim(&self, Parameters(params): Parameters<TaskIdParams>) -> Result<String, String> {
         let task = self
             .client
-            .update_task(
+            .get_task(params.task_id)
+            .await
+            .map_err(|e| format!("Failed to claim task: {e}"))?;
+
+        self.client
+            .move_task_to_bucket(
+                self.project_config.project_id,
+                self.project_config.view_id,
+                self.project_config.inprogress_bucket_id,
                 params.task_id,
-                crate::client::TaskUpdate {
-                    bucket_id: Some(self.project_config.inprogress_bucket_id),
-                    ..Default::default()
-                },
             )
             .await
             .map_err(|e| format!("Failed to claim task: {e}"))?;
@@ -320,9 +324,18 @@ impl VeinServer {
                 params.task_id,
                 crate::client::TaskUpdate {
                     done: Some(true),
-                    bucket_id: Some(self.project_config.done_bucket_id),
                     ..Default::default()
                 },
+            )
+            .await
+            .map_err(|e| format!("Failed to complete task: {e}"))?;
+
+        self.client
+            .move_task_to_bucket(
+                self.project_config.project_id,
+                self.project_config.view_id,
+                self.project_config.done_bucket_id,
+                params.task_id,
             )
             .await
             .map_err(|e| format!("Failed to complete task: {e}"))?;

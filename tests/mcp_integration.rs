@@ -236,13 +236,12 @@ async fn update_task_preserves_fields_not_in_update() {
     assert_eq!(task.description, "This description must survive updates");
     assert_eq!(task.priority, 3);
 
-    // Partial update: only change done and bucket_id (simulates `complete`)
+    // Partial update: only change done (simulates `complete` without bucket move)
     let updated = client
         .update_task(
             task.id,
             TaskUpdate {
                 done: Some(true),
-                bucket_id: Some(test_project.config.done_bucket_id),
                 ..Default::default()
             },
         )
@@ -255,6 +254,67 @@ async fn update_task_preserves_fields_not_in_update() {
     );
     assert_eq!(updated.priority, 3, "priority was wiped by partial update");
     assert!(updated.done);
+
+    test_project
+        .cleanup()
+        .await
+        .expect("failed to clean up test project");
+}
+
+#[tokio::test]
+async fn claim_moves_task_to_in_progress_bucket() {
+    let test_project = TestProject::create(vikunja_client())
+        .await
+        .expect("failed to create test project");
+
+    let client = vikunja_client();
+
+    // Create a task (lands in todo bucket by default)
+    let task = client
+        .create_task(test_project.config.project_id, "Move me", "", None)
+        .await
+        .expect("failed to create task");
+
+    // Move it to in-progress bucket
+    client
+        .move_task_to_bucket(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            test_project.config.inprogress_bucket_id,
+            task.id,
+        )
+        .await
+        .expect("failed to move task to in-progress bucket");
+
+    // Verify it appears in the in-progress bucket
+    let in_progress = client
+        .list_bucket_tasks(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            test_project.config.inprogress_bucket_id,
+        )
+        .await
+        .expect("failed to list in-progress tasks");
+
+    assert!(
+        in_progress.iter().any(|t| t.id == task.id),
+        "task should be in the in-progress bucket after move"
+    );
+
+    // Verify it's no longer in todo
+    let todo = client
+        .list_bucket_tasks(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            test_project.config.todo_bucket_id,
+        )
+        .await
+        .expect("failed to list todo tasks");
+
+    assert!(
+        !todo.iter().any(|t| t.id == task.id),
+        "task should not be in the todo bucket after move"
+    );
 
     test_project
         .cleanup()

@@ -9,7 +9,8 @@ lint:
     cargo clippy
 
 test *args:
-    cargo test {{ args }}
+    cargo test --lib {{ args }}
+    cargo test --test mcp_integration {{ args }} -- --test-threads=1
 
 dev:
     process-compose up -D
