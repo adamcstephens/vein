@@ -5,6 +5,7 @@ use vein::cli::{Cli, Command, ToolCommand};
 use vein::client::{ReqwestClient, VikunjaClient};
 use vein::config::{ConnectionConfig, ProjectConfig};
 use vein::init;
+use vein::markdown::markdown_to_html;
 use vein::server::{VeinServer, fetch_ready_tasks, format_task_detail, format_task_list};
 
 #[tokio::main(flavor = "current_thread")]
@@ -133,7 +134,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("Completed task #{}: {}", task.id, task.title);
                 }
                 ToolCommand::Comment { task_id, comment } => {
-                    let result = client.create_comment(task_id, &comment).await?;
+                    let html_comment = markdown_to_html(&comment);
+                    let result = client.create_comment(task_id, &html_comment).await?;
                     println!("Added comment #{} to task #{}", result.id, task_id);
                 }
                 ToolCommand::CreateLabel { title } => {
@@ -176,6 +178,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let priority = priority
                         .map(|p| vein::server::parse_priority(&p))
                         .transpose()?;
+                    let description = description.map(|d| markdown_to_html(&d));
                     let task = client
                         .update_task(
                             task_id,
@@ -197,8 +200,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let priority = priority
                         .map(|p| vein::server::parse_priority(&p))
                         .transpose()?;
+                    let html_description = markdown_to_html(&description);
                     let task = client
-                        .create_task(project_config.project_id, &title, &description, priority)
+                        .create_task(
+                            project_config.project_id,
+                            &title,
+                            &html_description,
+                            priority,
+                        )
                         .await?;
                     println!("Created task #{}: {}", task.id, task.title);
                 }

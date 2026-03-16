@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Markdown-to-HTML conversion for task descriptions and comments sent to Vikunja
+- HTML-to-markdown conversion for task descriptions returned to agents
 - `orient` MCP prompt — agent orientation with available tools, workflow guidance, and current task state
 - Priority support on `create_task` and `update_task` (none, low, medium, high, urgent)
 - `create_label` MCP tool — create a new label

@@ -14,6 +14,7 @@ use rmcp::{
 
 use crate::client::{ReqwestClient, Task, VikunjaClient};
 use crate::config::ProjectConfig;
+use crate::markdown::{html_to_markdown, markdown_to_html};
 
 fn is_blocked(task: &Task) -> bool {
     task.related_tasks
@@ -209,7 +210,10 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<CreateTaskParams>,
     ) -> Result<String, String> {
-        let description = params.description.unwrap_or_default();
+        let description = params
+            .description
+            .map(|d| markdown_to_html(&d))
+            .unwrap_or_default();
         let priority = params.priority.map(|p| parse_priority(&p)).transpose()?;
         let task = self
             .client
@@ -278,9 +282,10 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<CommentParams>,
     ) -> Result<String, String> {
+        let html_comment = markdown_to_html(&params.comment);
         let comment = self
             .client
-            .create_comment(params.task_id, &params.comment)
+            .create_comment(params.task_id, &html_comment)
             .await
             .map_err(|e| format!("Failed to add comment: {e}"))?;
 
@@ -367,6 +372,7 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<UpdateTaskParams>,
     ) -> Result<String, String> {
+        let description = params.description.map(|d| markdown_to_html(&d));
         let priority = params.priority.map(|p| parse_priority(&p)).transpose()?;
         let task = self
             .client
@@ -374,7 +380,7 @@ impl VeinServer {
                 params.task_id,
                 crate::client::TaskUpdate {
                     title: params.title,
-                    description: params.description,
+                    description,
                     priority,
                     ..Default::default()
                 },
@@ -537,7 +543,9 @@ pub fn format_task_detail(task: &Task) -> String {
 
     if !task.description.is_empty() {
         lines.push(String::new());
-        lines.push(task.description.clone());
+        let description =
+            html_to_markdown(&task.description).unwrap_or_else(|_| task.description.clone());
+        lines.push(description.trim_end().to_string());
     }
 
     lines.join("\n")
@@ -655,6 +663,15 @@ mod tests {
         assert!(!result.contains("Labels:"));
         assert!(!result.contains("Assignees:"));
         assert!(!result.contains("Relations:"));
+    }
+
+    #[test]
+    fn format_task_detail_converts_html_description_to_markdown() {
+        let mut task = make_task(1, "HTML desc", 0, vec![]);
+        task.description = "<p>some <strong>bold</strong> text</p>".to_string();
+        let result = format_task_detail(&task);
+        assert!(result.contains("some **bold** text"));
+        assert!(!result.contains("<strong>"));
     }
 
     #[test]
