@@ -111,6 +111,63 @@ async fn initialize_and_list_tools() {
 }
 
 #[tokio::test]
+async fn server_reports_prompt_capabilities() {
+    let test_project = TestProject::create(vikunja_client())
+        .await
+        .expect("failed to create test project");
+
+    let client = mcp_client(&test_project).await;
+
+    let result = client
+        .list_prompts(None)
+        .await
+        .expect("server should support prompts/list");
+
+    assert!(
+        result.prompts.iter().any(|p| p.name == "orient"),
+        "orient prompt should be registered"
+    );
+
+    test_project
+        .cleanup()
+        .await
+        .expect("failed to clean up test project");
+}
+
+#[tokio::test]
+async fn orient_prompt_returns_orientation() {
+    let test_project = TestProject::create(vikunja_client())
+        .await
+        .expect("failed to create test project");
+
+    let client = mcp_client(&test_project).await;
+
+    let result = client
+        .get_prompt(rmcp::model::GetPromptRequestParams::new("orient"))
+        .await
+        .expect("should be able to get orient prompt");
+
+    assert!(!result.messages.is_empty(), "orient should return messages");
+    let text = match &result.messages[0].content {
+        rmcp::model::PromptMessageContent::Text { text } => text,
+        _ => panic!("expected text content"),
+    };
+    assert!(
+        text.contains("Available Tools"),
+        "orient should list available tools"
+    );
+    assert!(
+        text.contains("Workflow"),
+        "orient should include workflow guidance"
+    );
+
+    test_project
+        .cleanup()
+        .await
+        .expect("failed to clean up test project");
+}
+
+#[tokio::test]
 async fn server_reports_tool_capabilities() {
     let test_project = TestProject::create(vikunja_client())
         .await

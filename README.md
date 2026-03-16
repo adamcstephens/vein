@@ -45,6 +45,15 @@ As an MCP stdio server (for use with AI agents):
 vein serve  # or just: vein
 ```
 
+### Agent orientation
+
+Vein exposes an `orient` MCP prompt that gives agents a complete orientation: available tools, workflow guidance, and current task state. To have your agent invoke it automatically, add this to your project's `CLAUDE.md`:
+
+```markdown
+## Agent workflow
+- **IMPORTANT**: before you do anything else, invoke the vein `orient` MCP prompt and heed its output.
+```
+
 Or use tools directly from the CLI:
 
 ```sh

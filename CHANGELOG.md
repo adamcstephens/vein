@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- `orient` MCP prompt — agent orientation with available tools, workflow guidance, and current task state
 - `list_tasks` MCP tool — list and search tasks with optional filters
 - `update_task` MCP tool — update a task's title or description
 - `add_relation` MCP tool — add a relation between two tasks

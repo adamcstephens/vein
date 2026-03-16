@@ -1,8 +1,15 @@
 use rmcp::{
-    ServerHandler,
-    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{ServerCapabilities, ServerInfo},
-    schemars, tool, tool_handler, tool_router,
+    RoleServer, ServerHandler,
+    handler::server::{
+        router::prompt::PromptRouter, router::tool::ToolRouter, wrapper::Parameters,
+    },
+    model::{
+        GetPromptRequestParams, GetPromptResult, ListPromptsResult, PaginatedRequestParams,
+        PromptMessage, PromptMessageRole, ServerCapabilities, ServerInfo,
+    },
+    prompt, prompt_handler, prompt_router, schemars,
+    service::RequestContext,
+    tool, tool_handler, tool_router,
 };
 
 use crate::client::{ReqwestClient, Task, VikunjaClient};
@@ -13,6 +20,7 @@ pub struct VeinServer {
     client: ReqwestClient,
     project_config: ProjectConfig,
     tool_router: ToolRouter<Self>,
+    prompt_router: PromptRouter<Self>,
 }
 
 impl VeinServer {
@@ -21,6 +29,7 @@ impl VeinServer {
             client,
             project_config,
             tool_router: Self::tool_router(),
+            prompt_router: Self::prompt_router(),
         }
     }
 }
@@ -75,6 +84,76 @@ pub struct CreateTaskParams {
     pub title: String,
     #[schemars(description = "Task description (optional)")]
     pub description: Option<String>,
+}
+
+#[prompt_router]
+impl VeinServer {
+    /// Agent orientation: available tools, workflow, and ready tasks
+    #[prompt(
+        name = "orient",
+        description = "Agent orientation: available tools, workflow guidance, and ready tasks"
+    )]
+    async fn orient(&self) -> Vec<PromptMessage> {
+        let ready_tasks = self
+            .client
+            .list_bucket_tasks(
+                self.project_config.project_id,
+                self.project_config.view_id,
+                self.project_config.todo_bucket_id,
+            )
+            .await
+            .map(|tasks| format_task_list(&tasks, "No tasks ready to be worked on."))
+            .unwrap_or_else(|e| format!("(failed to fetch ready tasks: {e})"));
+
+        let in_progress = self
+            .client
+            .list_bucket_tasks(
+                self.project_config.project_id,
+                self.project_config.view_id,
+                self.project_config.inprogress_bucket_id,
+            )
+            .await
+            .map(|tasks| format_task_list(&tasks, "No tasks currently in progress."))
+            .unwrap_or_else(|e| format!("(failed to fetch in-progress tasks: {e})"));
+
+        let text = format!(
+            r#"# Vein — Agent Orientation
+
+You are connected to a Vikunja-backed issue tracker. Use the tools below to manage your work.
+
+## Available Tools
+
+- **list_ready** — List tasks ready to be worked on (Todo bucket)
+- **list_tasks** — List/search tasks across all buckets (supports filter and search params)
+- **list_in_progress** — List tasks currently being worked on
+- **list_done** — List completed tasks
+- **get_task** — Get full task details (description, labels, relations, assignees)
+- **create_task** — Create a new task
+- **update_task** — Update a task's title or description
+- **claim** — Move a task to In Progress
+- **complete** — Mark a task as done
+- **comment** — Add a progress note to a task
+- **add_relation** — Add a relation between tasks (blocked, blocking, subtask, etc.)
+
+## Workflow
+
+1. **Before starting work**: Check for existing tasks with `list_ready` or `list_tasks`. If one matches your work, `claim` it. If not, `create_task` first.
+2. **While working**: Use `comment` to log progress, decisions, and blockers.
+3. **When done**: Use `complete` to mark the task finished. Add a final `comment` summarizing what was done.
+4. **Task descriptions**: Use `update_task` to rewrite the description when the plan changes. Use `comment` for incremental progress notes.
+
+## Current State
+
+### Ready to work on
+{ready_tasks}
+
+### In progress
+{in_progress}
+"#
+        );
+
+        vec![PromptMessage::new_text(PromptMessageRole::User, text)]
+    }
 }
 
 #[tool_router]
@@ -353,10 +432,16 @@ pub fn format_task_detail(task: &Task) -> String {
 }
 
 #[tool_handler]
+#[prompt_handler]
 impl ServerHandler for VeinServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_instructions("Vikunja-backed issue tracker for AI agents")
+        ServerInfo::new(
+            ServerCapabilities::builder()
+                .enable_tools()
+                .enable_prompts()
+                .build(),
+        )
+        .with_instructions("Vikunja-backed issue tracker for AI agents")
     }
 }
 
@@ -458,6 +543,17 @@ mod tests {
         assert!(!result.contains("Labels:"));
         assert!(!result.contains("Assignees:"));
         assert!(!result.contains("Relations:"));
+    }
+
+    #[test]
+    fn orient_prompt_contains_orientation() {
+        let attr = VeinServer::orient_prompt_attr();
+        assert_eq!(attr.name, "orient");
+        assert!(attr.description.as_deref().unwrap().contains("orientation"),);
+        assert!(
+            attr.arguments.is_none() || attr.arguments.as_ref().unwrap().is_empty(),
+            "prime prompt should have no arguments"
+        );
     }
 
     #[test]
