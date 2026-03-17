@@ -12,15 +12,10 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 
-use crate::client::{ReqwestClient, Task, TaskRef, VikunjaClient, resolve_task_ref};
+use crate::client::{ReqwestClient, Task};
 use crate::config::ProjectConfig;
-use crate::markdown::{html_to_markdown, markdown_to_html};
-
-fn is_blocked(task: &Task) -> bool {
-    task.related_tasks
-        .get("blocked")
-        .is_some_and(|blockers| blockers.iter().any(|t| !t.done))
-}
+use crate::markdown::html_to_markdown;
+use crate::project::ProjectClient;
 
 pub fn parse_priority(s: &str) -> Result<i64, String> {
     match s.to_lowercase().as_str() {
@@ -37,8 +32,7 @@ pub fn parse_priority(s: &str) -> Result<i64, String> {
 
 #[derive(Debug, Clone)]
 pub struct VeinServer {
-    client: ReqwestClient,
-    project_config: ProjectConfig,
+    project: ProjectClient<ReqwestClient>,
     tool_router: ToolRouter<Self>,
     prompt_router: PromptRouter<Self>,
 }
@@ -46,18 +40,10 @@ pub struct VeinServer {
 impl VeinServer {
     pub fn new(client: ReqwestClient, project_config: ProjectConfig) -> Self {
         VeinServer {
-            client,
-            project_config,
+            project: ProjectClient::new(client, project_config),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
-    }
-
-    async fn resolve(&self, task_id_str: &str) -> Result<i64, String> {
-        let task_ref = TaskRef::parse(task_id_str).map_err(|e| e.to_string())?;
-        resolve_task_ref(&self.client, self.project_config.project_id, &task_ref)
-            .await
-            .map_err(|e| format!("Failed to resolve task reference: {e}"))
     }
 }
 
@@ -143,18 +129,16 @@ impl VeinServer {
         description = "Agent orientation: available tools, workflow guidance, and ready tasks"
     )]
     async fn orient(&self) -> Vec<PromptMessage> {
-        let ready_tasks = fetch_ready_tasks(&self.client, &self.project_config)
+        let ready_tasks = self
+            .project
+            .list_ready()
             .await
             .map(|tasks| format_task_list(&tasks, "No tasks ready to be worked on."))
             .unwrap_or_else(|e| format!("(failed to fetch ready tasks: {e})"));
 
         let in_progress = self
-            .client
-            .list_bucket_tasks(
-                self.project_config.project_id,
-                self.project_config.view_id,
-                self.project_config.inprogress_bucket_id,
-            )
+            .project
+            .list_in_progress()
             .await
             .map(|tasks| format_task_list(&tasks, "No tasks currently in progress."))
             .unwrap_or_else(|e| format!("(failed to fetch in-progress tasks: {e})"));
@@ -208,7 +192,9 @@ impl VeinServer {
     /// List tasks that are ready to be worked on (in the Todo bucket, excluding blocked tasks)
     #[tool(name = "list_ready")]
     async fn list_ready(&self) -> Result<String, String> {
-        let ready = fetch_ready_tasks(&self.client, &self.project_config)
+        let ready = self
+            .project
+            .list_ready()
             .await
             .map_err(|e| format!("Failed to list tasks: {e}"))?;
         Ok(format_task_list(&ready, "No tasks ready to be worked on."))
@@ -220,19 +206,10 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<CreateTaskParams>,
     ) -> Result<String, String> {
-        let description = params
-            .description
-            .map(|d| markdown_to_html(&d))
-            .unwrap_or_default();
         let priority = params.priority.map(|p| parse_priority(&p)).transpose()?;
         let task = self
-            .client
-            .create_task(
-                self.project_config.project_id,
-                &params.title,
-                &description,
-                priority,
-            )
+            .project
+            .create_task(&params.title, params.description.as_deref(), priority)
             .await
             .map_err(|e| format!("Failed to create task: {e}"))?;
 
@@ -247,12 +224,8 @@ impl VeinServer {
     #[tool(name = "list_in_progress")]
     async fn list_in_progress(&self) -> Result<String, String> {
         let tasks = self
-            .client
-            .list_bucket_tasks(
-                self.project_config.project_id,
-                self.project_config.view_id,
-                self.project_config.inprogress_bucket_id,
-            )
+            .project
+            .list_in_progress()
             .await
             .map_err(|e| format!("Failed to list tasks: {e}"))?;
 
@@ -263,12 +236,8 @@ impl VeinServer {
     #[tool(name = "list_done")]
     async fn list_done(&self) -> Result<String, String> {
         let tasks = self
-            .client
-            .list_bucket_tasks(
-                self.project_config.project_id,
-                self.project_config.view_id,
-                self.project_config.done_bucket_id,
-            )
+            .project
+            .list_done()
             .await
             .map_err(|e| format!("Failed to list tasks: {e}"))?;
 
@@ -281,10 +250,9 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<TaskIdParams>,
     ) -> Result<String, String> {
-        let task_id = self.resolve(&params.task_id).await?;
         let task = self
-            .client
-            .get_task(task_id)
+            .project
+            .get_task(&params.task_id)
             .await
             .map_err(|e| format!("Failed to get task: {e}"))?;
 
@@ -297,10 +265,8 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<CommentParams>,
     ) -> Result<String, String> {
-        let task_id = self.resolve(&params.task_id).await?;
-        let html_comment = markdown_to_html(&params.comment);
-        self.client
-            .create_comment(task_id, &html_comment)
+        self.project
+            .comment(&params.task_id, &params.comment)
             .await
             .map_err(|e| format!("Failed to add comment: {e}"))?;
 
@@ -310,20 +276,9 @@ impl VeinServer {
     /// Claim a task by moving it to the In Progress bucket
     #[tool(name = "claim")]
     async fn claim(&self, Parameters(params): Parameters<TaskIdParams>) -> Result<String, String> {
-        let task_id = self.resolve(&params.task_id).await?;
         let task = self
-            .client
-            .get_task(task_id)
-            .await
-            .map_err(|e| format!("Failed to claim task: {e}"))?;
-
-        self.client
-            .move_task_to_bucket(
-                self.project_config.project_id,
-                self.project_config.view_id,
-                self.project_config.inprogress_bucket_id,
-                task_id,
-            )
+            .project
+            .claim(&params.task_id)
             .await
             .map_err(|e| format!("Failed to claim task: {e}"))?;
 
@@ -340,26 +295,9 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<TaskIdParams>,
     ) -> Result<String, String> {
-        let task_id = self.resolve(&params.task_id).await?;
         let task = self
-            .client
-            .update_task(
-                task_id,
-                crate::client::TaskUpdate {
-                    done: Some(true),
-                    ..Default::default()
-                },
-            )
-            .await
-            .map_err(|e| format!("Failed to complete task: {e}"))?;
-
-        self.client
-            .move_task_to_bucket(
-                self.project_config.project_id,
-                self.project_config.view_id,
-                self.project_config.done_bucket_id,
-                task_id,
-            )
+            .project
+            .complete(&params.task_id)
             .await
             .map_err(|e| format!("Failed to complete task: {e}"))?;
 
@@ -376,11 +314,13 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<AddRelationParams>,
     ) -> Result<String, String> {
-        let task_id = self.resolve(&params.task_id).await?;
-        let other_task_id = self.resolve(&params.other_task_id).await?;
         let relation = self
-            .client
-            .create_relation(task_id, other_task_id, &params.relation_kind)
+            .project
+            .add_relation(
+                &params.task_id,
+                &params.other_task_id,
+                &params.relation_kind,
+            )
             .await
             .map_err(|e| format!("Failed to add relation: {e}"))?;
 
@@ -396,20 +336,10 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<UpdateTaskParams>,
     ) -> Result<String, String> {
-        let task_id = self.resolve(&params.task_id).await?;
-        let description = params.description.map(|d| markdown_to_html(&d));
         let priority = params.priority.map(|p| parse_priority(&p)).transpose()?;
         let task = self
-            .client
-            .update_task(
-                task_id,
-                crate::client::TaskUpdate {
-                    title: params.title,
-                    description,
-                    priority,
-                    ..Default::default()
-                },
-            )
+            .project
+            .update_task(&params.task_id, params.title, params.description, priority)
             .await
             .map_err(|e| format!("Failed to update task: {e}"))?;
 
@@ -427,7 +357,7 @@ impl VeinServer {
         Parameters(params): Parameters<CreateLabelParams>,
     ) -> Result<String, String> {
         let label = self
-            .client
+            .project
             .create_label(&params.title)
             .await
             .map_err(|e| format!("Failed to create label: {e}"))?;
@@ -441,9 +371,8 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<AddLabelParams>,
     ) -> Result<String, String> {
-        let task_id = self.resolve(&params.task_id).await?;
-        self.client
-            .add_label_to_task(task_id, params.label_id)
+        self.project
+            .add_label(&params.task_id, params.label_id)
             .await
             .map_err(|e| format!("Failed to add label: {e}"))?;
 
@@ -457,7 +386,7 @@ impl VeinServer {
     #[tool(name = "list_labels")]
     async fn list_labels(&self) -> Result<String, String> {
         let labels = self
-            .client
+            .project
             .list_labels()
             .await
             .map_err(|e| format!("Failed to list labels: {e}"))?;
@@ -480,28 +409,13 @@ impl VeinServer {
         Parameters(params): Parameters<ListTasksParams>,
     ) -> Result<String, String> {
         let tasks = self
-            .client
-            .list_view_tasks(
-                self.project_config.project_id,
-                self.project_config.view_id,
-                params.filter.as_deref(),
-                params.search.as_deref(),
-            )
+            .project
+            .list_tasks(params.filter.as_deref(), params.search.as_deref())
             .await
             .map_err(|e| format!("Failed to list tasks: {e}"))?;
 
         Ok(format_task_list(&tasks, "No tasks found."))
     }
-}
-
-pub async fn fetch_ready_tasks(
-    client: &impl VikunjaClient,
-    config: &ProjectConfig,
-) -> Result<Vec<Task>, crate::client::ClientError> {
-    let tasks = client
-        .list_bucket_tasks(config.project_id, config.view_id, config.todo_bucket_id)
-        .await?;
-    Ok(tasks.into_iter().filter(|t| !is_blocked(t)).collect())
 }
 
 pub fn format_task_list(tasks: &[Task], empty_message: &str) -> String {
@@ -602,6 +516,7 @@ impl ServerHandler for VeinServer {
 mod tests {
     use super::*;
     use crate::client::{Label, Task};
+    use crate::project::is_blocked;
     use std::collections::HashMap;
 
     fn make_task(id: i64, title: &str, priority: i64, labels: Vec<&str>) -> Task {

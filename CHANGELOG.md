@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Extract `ProjectClient` domain layer: project-scoped operations (resolve, claim, complete, comment, etc.) are now centralized instead of duplicated between MCP server and CLI
+
 ### Added
 
 - Project identifier support: tasks display as `VEIN-3` instead of `#17` when the project has an identifier configured

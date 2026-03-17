@@ -1,8 +1,9 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rmcp::ServiceExt;
-use vein::client::{ReqwestClient, TaskRef, TaskUpdate, VikunjaClient, resolve_task_ref};
+use vein::client::{ReqwestClient, TaskUpdate, VikunjaClient};
 use vein::config::{ConnectionConfig, ProjectConfig};
+use vein::project::ProjectClient;
 use vein::server::VeinServer;
 
 fn unique_project_name() -> String {
@@ -332,15 +333,15 @@ async fn task_identifier_resolves_to_correct_task() {
         .await
         .expect("failed to create project with identifier");
 
-    let client = vikunja_client();
+    let project = ProjectClient::new(vikunja_client(), test_project.config.clone());
 
     // Create two tasks — they should get {IDENT}-1 and {IDENT}-2
-    let task1 = client
-        .create_task(test_project.config.project_id, "First task", "", None)
+    let task1 = project
+        .create_task("First task", None, None)
         .await
         .expect("failed to create task 1");
-    let task2 = client
-        .create_task(test_project.config.project_id, "Second task", "", None)
+    let task2 = project
+        .create_task("Second task", None, None)
         .await
         .expect("failed to create task 2");
 
@@ -348,10 +349,10 @@ async fn task_identifier_resolves_to_correct_task() {
     assert_eq!(task2.identifier, format!("{ident}-2"));
     assert_eq!(task1.display_id(), format!("{ident}-1"));
 
-    // Resolve {IDENT}-2 to its numeric ID
+    // Resolve {IDENT}-2 via ProjectClient
     let ref_str = format!("{ident}-2");
-    let task_ref = TaskRef::parse(&ref_str).expect("failed to parse identifier");
-    let resolved_id = resolve_task_ref(&client, test_project.config.project_id, &task_ref)
+    let resolved_id = project
+        .resolve(&ref_str)
         .await
         .expect("failed to resolve identifier");
 
@@ -360,11 +361,11 @@ async fn task_identifier_resolves_to_correct_task() {
         "identifier should resolve to task2's ID"
     );
 
-    // Fetch by resolved ID and verify it's the right task
-    let fetched = client
-        .get_task(resolved_id)
+    // Fetch by identifier and verify it's the right task
+    let fetched = project
+        .get_task(&ref_str)
         .await
-        .expect("failed to get task by resolved ID");
+        .expect("failed to get task by identifier");
 
     assert_eq!(fetched.title, "Second task");
     assert_eq!(fetched.identifier, format!("{ident}-2"));

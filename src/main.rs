@@ -2,11 +2,11 @@ use clap::Parser;
 use rmcp::ServiceExt;
 
 use vein::cli::{Cli, Command, ToolCommand};
-use vein::client::{ReqwestClient, TaskRef, VikunjaClient, resolve_task_ref};
+use vein::client::{ReqwestClient, VikunjaClient};
 use vein::config::{ConnectionConfig, ProjectConfig};
 use vein::init;
-use vein::markdown::markdown_to_html;
-use vein::server::{VeinServer, fetch_ready_tasks, format_task_detail, format_task_list};
+use vein::project::ProjectClient;
+use vein::server::{VeinServer, format_task_detail, format_task_list, parse_priority};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -55,110 +55,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let conn_config = ConnectionConfig::from_env()?;
             let project_config = ProjectConfig::from_env()?;
             let client = ReqwestClient::new(&conn_config)?;
-            macro_rules! resolve {
-                ($s:expr) => {{
-                    let task_ref = TaskRef::parse($s).map_err(|e| e.to_string())?;
-                    resolve_task_ref(&client, project_config.project_id, &task_ref).await?
-                }};
-            }
+            let project = ProjectClient::new(client, project_config);
             match tool {
                 ToolCommand::ListReady => {
-                    let ready = fetch_ready_tasks(&client, &project_config).await?;
+                    let ready = project.list_ready().await?;
                     println!(
                         "{}",
                         format_task_list(&ready, "No tasks ready to be worked on.")
                     );
                 }
                 ToolCommand::ListTasks { filter, search } => {
-                    let tasks = client
-                        .list_view_tasks(
-                            project_config.project_id,
-                            project_config.view_id,
-                            filter.as_deref(),
-                            search.as_deref(),
-                        )
+                    let tasks = project
+                        .list_tasks(filter.as_deref(), search.as_deref())
                         .await?;
                     println!("{}", format_task_list(&tasks, "No tasks found."));
                 }
                 ToolCommand::ListInProgress => {
-                    let tasks = client
-                        .list_bucket_tasks(
-                            project_config.project_id,
-                            project_config.view_id,
-                            project_config.inprogress_bucket_id,
-                        )
-                        .await?;
+                    let tasks = project.list_in_progress().await?;
                     println!(
                         "{}",
                         format_task_list(&tasks, "No tasks currently in progress.")
                     );
                 }
                 ToolCommand::ListDone => {
-                    let tasks = client
-                        .list_bucket_tasks(
-                            project_config.project_id,
-                            project_config.view_id,
-                            project_config.done_bucket_id,
-                        )
-                        .await?;
+                    let tasks = project.list_done().await?;
                     println!("{}", format_task_list(&tasks, "No completed tasks."));
                 }
                 ToolCommand::GetTask { task_id } => {
-                    let id = resolve!(&task_id);
-                    let task = client.get_task(id).await?;
+                    let task = project.get_task(&task_id).await?;
                     println!("{}", format_task_detail(&task));
                 }
                 ToolCommand::Claim { task_id } => {
-                    let id = resolve!(&task_id);
-                    let task = client.get_task(id).await?;
-                    client
-                        .move_task_to_bucket(
-                            project_config.project_id,
-                            project_config.view_id,
-                            project_config.inprogress_bucket_id,
-                            id,
-                        )
-                        .await?;
+                    let task = project.claim(&task_id).await?;
                     println!("Claimed task {}: {}", task.display_id(), task.title);
                 }
                 ToolCommand::Complete { task_id } => {
-                    let id = resolve!(&task_id);
-                    let task = client
-                        .update_task(
-                            id,
-                            vein::client::TaskUpdate {
-                                done: Some(true),
-                                ..Default::default()
-                            },
-                        )
-                        .await?;
-                    client
-                        .move_task_to_bucket(
-                            project_config.project_id,
-                            project_config.view_id,
-                            project_config.done_bucket_id,
-                            id,
-                        )
-                        .await?;
+                    let task = project.complete(&task_id).await?;
                     println!("Completed task {}: {}", task.display_id(), task.title);
                 }
                 ToolCommand::Comment { task_id, comment } => {
-                    let id = resolve!(&task_id);
-                    let html_comment = markdown_to_html(&comment);
-                    client.create_comment(id, &html_comment).await?;
+                    project.comment(&task_id, &comment).await?;
                     println!("Added comment to task {task_id}");
                 }
                 ToolCommand::CreateLabel { title } => {
-                    let label = client.create_label(&title).await?;
+                    let label = project.create_label(&title).await?;
                     println!("Created label #{}: {}", label.id, label.title);
                 }
                 ToolCommand::AddLabel { task_id, label_id } => {
-                    let id = resolve!(&task_id);
-                    client.add_label_to_task(id, label_id).await?;
+                    project.add_label(&task_id, label_id).await?;
                     println!("Added label #{label_id} to task {task_id}");
                 }
                 ToolCommand::ListLabels => {
-                    let labels = client.list_labels().await?;
+                    let labels = project.list_labels().await?;
                     if labels.is_empty() {
                         println!("No labels found.");
                     } else {
@@ -172,9 +120,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     other_task_id,
                     relation_kind,
                 } => {
-                    let id = resolve!(&task_id);
-                    let other_id = resolve!(&other_task_id);
-                    let relation = client.create_relation(id, other_id, &relation_kind).await?;
+                    let relation = project
+                        .add_relation(&task_id, &other_task_id, &relation_kind)
+                        .await?;
                     println!(
                         "Added {} relation: {} -> {}",
                         relation.relation_kind, task_id, other_task_id
@@ -186,21 +134,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     description,
                     priority,
                 } => {
-                    let id = resolve!(&task_id);
-                    let priority = priority
-                        .map(|p| vein::server::parse_priority(&p))
-                        .transpose()?;
-                    let description = description.map(|d| markdown_to_html(&d));
-                    let task = client
-                        .update_task(
-                            id,
-                            vein::client::TaskUpdate {
-                                title,
-                                description,
-                                priority,
-                                ..Default::default()
-                            },
-                        )
+                    let priority = priority.map(|p| parse_priority(&p)).transpose()?;
+                    let task = project
+                        .update_task(&task_id, title, description, priority)
                         .await?;
                     println!("Updated task {}: {}", task.display_id(), task.title);
                 }
@@ -209,17 +145,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     description,
                     priority,
                 } => {
-                    let priority = priority
-                        .map(|p| vein::server::parse_priority(&p))
-                        .transpose()?;
-                    let html_description = markdown_to_html(&description);
-                    let task = client
-                        .create_task(
-                            project_config.project_id,
-                            &title,
-                            &html_description,
-                            priority,
-                        )
+                    let priority = priority.map(|p| parse_priority(&p)).transpose()?;
+                    let task = project
+                        .create_task(&title, Some(&description), priority)
                         .await?;
                     println!("Created task {}: {}", task.display_id(), task.title);
                 }

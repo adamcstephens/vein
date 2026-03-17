@@ -1,11 +1,11 @@
 ---
 # vein-8gr2
 title: prime command
-status: todo
+status: completed
 type: feature
 priority: high
 created_at: 2026-03-16T04:25:00Z
-updated_at: 2026-03-17T02:24:51Z
+updated_at: 2026-03-17T04:53:00Z
 ---
 
 Add an MCP prompt called `prime` that outputs agent orientation: usage instructions, available tools, current project context, and what's ready to work on. CLAUDE.md tells the agent to invoke it at session start.

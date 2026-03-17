@@ -1,10 +1,11 @@
 ---
 # vein-eayl
 title: Extract ProjectClient domain layer
-status: todo
+status: completed
 type: task
+priority: normal
 created_at: 2026-03-17T04:47:15Z
-updated_at: 2026-03-17T04:47:15Z
+updated_at: 2026-03-17T13:06:17Z
 ---
 
 Refactor to eliminate duplicated task resolution and project-scoped operations across server.rs, main.rs, and tests.
@@ -38,9 +39,13 @@ Integration tests can call `ProjectClient` methods directly.
 
 ## Todo
 
-- [ ] Create `ProjectClient` struct wrapping client + config
-- [ ] Move `resolve()` into `ProjectClient`
-- [ ] Move project-scoped operations into `ProjectClient`
-- [ ] Simplify `VeinServer` to delegate to `ProjectClient`
-- [ ] Simplify main.rs CLI handlers to delegate to `ProjectClient`
-- [ ] Update integration tests to use `ProjectClient` where appropriate
+- [x] Create `ProjectClient` struct wrapping client + config
+- [x] Move `resolve()` into `ProjectClient`
+- [x] Move project-scoped operations into `ProjectClient`
+- [x] Simplify `VeinServer` to delegate to `ProjectClient`
+- [x] Simplify main.rs CLI handlers to delegate to `ProjectClient`
+- [x] Update integration tests to use `ProjectClient` where appropriate
+
+## Summary of Changes
+
+Extracted `ProjectClient<C: VikunjaClient>` in `src/project.rs` that wraps a client + config and provides all project-scoped operations. VeinServer and main.rs CLI are now thin adapters. The resolve!() macro and duplicated logic are eliminated. 10 unit tests cover the new module.
