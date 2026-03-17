@@ -12,7 +12,7 @@ test *args:
     cargo test --lib {{ args }}
 
 test-integration *args:
-    cargo test --test mcp_integration {{ args }} -- --test-threads=1
+    cargo test --test integration {{ args }} -- --test-threads=1
 
 dev:
     process-compose up -D

@@ -124,7 +124,7 @@ async fn mcp_client(
 }
 
 #[tokio::test]
-async fn initialize_and_list_tools() {
+async fn mcp_initialize_and_list_tools() {
     let test_project = TestProject::create(vikunja_client())
         .await
         .expect("failed to create test project");
@@ -139,7 +139,7 @@ async fn initialize_and_list_tools() {
 }
 
 #[tokio::test]
-async fn server_reports_prompt_capabilities() {
+async fn mcp_server_reports_prompt_capabilities() {
     let test_project = TestProject::create(vikunja_client())
         .await
         .expect("failed to create test project");
@@ -158,7 +158,7 @@ async fn server_reports_prompt_capabilities() {
 }
 
 #[tokio::test]
-async fn orient_prompt_returns_orientation() {
+async fn mcp_orient_prompt_returns_orientation() {
     let test_project = TestProject::create(vikunja_client())
         .await
         .expect("failed to create test project");
@@ -186,7 +186,7 @@ async fn orient_prompt_returns_orientation() {
 }
 
 #[tokio::test]
-async fn server_reports_tool_capabilities() {
+async fn mcp_server_reports_tool_capabilities() {
     let test_project = TestProject::create(vikunja_client())
         .await
         .expect("failed to create test project");
