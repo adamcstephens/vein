@@ -30,6 +30,10 @@ where
 #[derive(Debug, Clone, Deserialize)]
 pub struct Task {
     pub id: i64,
+    #[serde(default)]
+    pub identifier: String,
+    #[serde(default)]
+    pub index: i64,
     pub title: String,
     pub description: String,
     pub done: bool,
@@ -42,6 +46,17 @@ pub struct Task {
     pub assignees: Vec<User>,
     #[serde(default, deserialize_with = "deserialize_null_default")]
     pub related_tasks: HashMap<String, Vec<Task>>,
+}
+
+impl Task {
+    /// Returns the human-friendly display ID (e.g. "VEIN-3") if available, else "#42".
+    pub fn display_id(&self) -> String {
+        if self.identifier.is_empty() {
+            format!("#{}", self.id)
+        } else {
+            self.identifier.clone()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -75,6 +90,8 @@ pub struct ProjectView {
 #[derive(Debug, Clone, Deserialize)]
 pub struct Project {
     pub id: i64,
+    #[serde(default)]
+    pub identifier: String,
     pub title: String,
     pub description: String,
     #[serde(default)]
@@ -85,6 +102,10 @@ pub struct Project {
 
 pub trait VikunjaClient {
     fn list_projects(&self) -> impl Future<Output = Result<Vec<Project>, ClientError>> + Send;
+    fn get_project(
+        &self,
+        project_id: i64,
+    ) -> impl Future<Output = Result<Project, ClientError>> + Send;
     fn get_user(&self) -> impl Future<Output = Result<User, ClientError>> + Send;
     fn get_task(&self, task_id: i64) -> impl Future<Output = Result<Task, ClientError>> + Send;
     fn list_bucket_tasks(
@@ -92,6 +113,11 @@ pub trait VikunjaClient {
         project_id: i64,
         view_id: i64,
         bucket_id: i64,
+    ) -> impl Future<Output = Result<Vec<Task>, ClientError>> + Send;
+    fn list_project_tasks(
+        &self,
+        project_id: i64,
+        filter: &str,
     ) -> impl Future<Output = Result<Vec<Task>, ClientError>> + Send;
     fn list_view_tasks(
         &self,
@@ -143,6 +169,7 @@ pub trait VikunjaClient {
         &self,
         title: &str,
         description: &str,
+        identifier: Option<&str>,
     ) -> impl Future<Output = Result<Project, ClientError>> + Send;
     fn delete_project(
         &self,
@@ -155,6 +182,57 @@ pub trait VikunjaClient {
         bucket_id: i64,
         task_id: i64,
     ) -> impl Future<Output = Result<(), ClientError>> + Send;
+}
+
+// --- Task reference resolution ---
+
+/// Parsed task reference: either a numeric ID or a project identifier like "VEIN-3".
+#[derive(Debug, Clone, PartialEq)]
+pub enum TaskRef {
+    Id(i64),
+    Identifier { prefix: String, index: i64 },
+}
+
+impl TaskRef {
+    /// Parse a task reference string. Accepts "VEIN-3" style identifiers or plain numeric IDs.
+    pub fn parse(s: &str) -> Result<Self, String> {
+        let s = s.trim().trim_start_matches('#');
+        if let Ok(id) = s.parse::<i64>() {
+            return Ok(TaskRef::Id(id));
+        }
+        if let Some((prefix, index_str)) = s.rsplit_once('-')
+            && let Ok(index) = index_str.parse::<i64>()
+            && !prefix.is_empty()
+        {
+            return Ok(TaskRef::Identifier {
+                prefix: prefix.to_string(),
+                index,
+            });
+        }
+        Err(format!(
+            "Invalid task reference '{s}'. Use a numeric ID (42) or identifier (VEIN-3)."
+        ))
+    }
+}
+
+/// Resolve a task reference to a numeric task ID.
+pub async fn resolve_task_ref(
+    client: &impl VikunjaClient,
+    project_id: i64,
+    task_ref: &TaskRef,
+) -> Result<i64, ClientError> {
+    match task_ref {
+        TaskRef::Id(id) => Ok(*id),
+        TaskRef::Identifier { index, .. } => {
+            let tasks = client
+                .list_project_tasks(project_id, &format!("index = {index}"))
+                .await?;
+            tasks.first().map(|t| t.id).ok_or_else(|| ClientError::Api {
+                status: 404,
+                message: format!("no task found with index {index}"),
+            })
+        }
+    }
 }
 
 // --- Update payload ---
@@ -250,6 +328,8 @@ struct AddLabelPayload {
 struct CreateProjectPayload<'a> {
     title: &'a str,
     description: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    identifier: Option<&'a str>,
 }
 
 #[derive(Serialize)]
@@ -304,6 +384,17 @@ impl VikunjaClient for ReqwestClient {
         Ok(resp.json().await?)
     }
 
+    async fn get_project(&self, project_id: i64) -> Result<Project, ClientError> {
+        let projects = self.list_projects().await?;
+        projects
+            .into_iter()
+            .find(|p| p.id == project_id)
+            .ok_or_else(|| ClientError::Api {
+                status: 404,
+                message: format!("project {project_id} not found"),
+            })
+    }
+
     async fn get_user(&self) -> Result<User, ClientError> {
         let resp = self.http.get(self.url("/user")).send().await?;
         let resp = Self::check_response(resp).await?;
@@ -314,6 +405,21 @@ impl VikunjaClient for ReqwestClient {
         let resp = self
             .http
             .get(self.url(&format!("/tasks/{task_id}")))
+            .send()
+            .await?;
+        let resp = Self::check_response(resp).await?;
+        Ok(resp.json().await?)
+    }
+
+    async fn list_project_tasks(
+        &self,
+        project_id: i64,
+        filter: &str,
+    ) -> Result<Vec<Task>, ClientError> {
+        let resp = self
+            .http
+            .get(self.url(&format!("/projects/{project_id}/tasks")))
+            .query(&[("filter", filter)])
             .send()
             .await?;
         let resp = Self::check_response(resp).await?;
@@ -480,11 +586,20 @@ impl VikunjaClient for ReqwestClient {
         Ok(resp.json().await?)
     }
 
-    async fn create_project(&self, title: &str, description: &str) -> Result<Project, ClientError> {
+    async fn create_project(
+        &self,
+        title: &str,
+        description: &str,
+        identifier: Option<&str>,
+    ) -> Result<Project, ClientError> {
         let resp = self
             .http
             .put(self.url("/projects"))
-            .json(&CreateProjectPayload { title, description })
+            .json(&CreateProjectPayload {
+                title,
+                description,
+                identifier,
+            })
             .send()
             .await?;
         let resp = Self::check_response(resp).await?;
@@ -533,10 +648,20 @@ mod tests {
         async fn list_projects(&self) -> Result<Vec<Project>, ClientError> {
             unimplemented!()
         }
+        async fn get_project(&self, _project_id: i64) -> Result<Project, ClientError> {
+            unimplemented!()
+        }
         async fn get_user(&self) -> Result<User, ClientError> {
             Ok(self.user.clone())
         }
         async fn get_task(&self, _task_id: i64) -> Result<Task, ClientError> {
+            unimplemented!()
+        }
+        async fn list_project_tasks(
+            &self,
+            _project_id: i64,
+            _filter: &str,
+        ) -> Result<Vec<Task>, ClientError> {
             unimplemented!()
         }
         async fn list_bucket_tasks(
@@ -614,6 +739,7 @@ mod tests {
             &self,
             _title: &str,
             _description: &str,
+            _identifier: Option<&str>,
         ) -> Result<Project, ClientError> {
             unimplemented!()
         }
@@ -759,6 +885,8 @@ mod tests {
     fn make_task() -> Task {
         Task {
             id: 1,
+            identifier: String::new(),
+            index: 0,
             title: "Original title".to_string(),
             description: "Original description".to_string(),
             done: false,
@@ -769,6 +897,50 @@ mod tests {
             assignees: vec![],
             related_tasks: HashMap::new(),
         }
+    }
+
+    #[test]
+    fn task_ref_parses_numeric_id() {
+        assert_eq!(TaskRef::parse("42"), Ok(TaskRef::Id(42)));
+    }
+
+    #[test]
+    fn task_ref_parses_hash_numeric_id() {
+        assert_eq!(TaskRef::parse("#42"), Ok(TaskRef::Id(42)));
+    }
+
+    #[test]
+    fn task_ref_parses_identifier() {
+        assert_eq!(
+            TaskRef::parse("VEIN-3"),
+            Ok(TaskRef::Identifier {
+                prefix: "VEIN".to_string(),
+                index: 3,
+            })
+        );
+    }
+
+    #[test]
+    fn task_ref_rejects_invalid() {
+        assert!(TaskRef::parse("not-valid-ref").is_err());
+    }
+
+    #[test]
+    fn task_ref_rejects_empty() {
+        assert!(TaskRef::parse("").is_err());
+    }
+
+    #[test]
+    fn display_id_uses_identifier_when_present() {
+        let mut task = make_task();
+        task.identifier = "VEIN-3".to_string();
+        assert_eq!(task.display_id(), "VEIN-3");
+    }
+
+    #[test]
+    fn display_id_falls_back_to_hash_id() {
+        let task = make_task();
+        assert_eq!(task.display_id(), "#1");
     }
 
     #[test]

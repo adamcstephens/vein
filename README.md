@@ -83,7 +83,7 @@ Vein exposes an `orient` MCP prompt that gives agents a complete orientation: av
 
 ```markdown
 ## Agent workflow
-- **IMPORTANT**: before you do anything else, invoke the vein `orient` MCP prompt and heed its output.
+- **IMPORTANT**: before you do anything else, invoke the vein `orient` MCP prompt and heed its output with `/mcp__vein__orient`.
 ```
 
 Or use tools directly from the CLI:

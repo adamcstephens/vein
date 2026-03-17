@@ -12,7 +12,7 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 
-use crate::client::{ReqwestClient, Task, VikunjaClient};
+use crate::client::{ReqwestClient, Task, TaskRef, VikunjaClient, resolve_task_ref};
 use crate::config::ProjectConfig;
 use crate::markdown::{html_to_markdown, markdown_to_html};
 
@@ -52,6 +52,13 @@ impl VeinServer {
             prompt_router: Self::prompt_router(),
         }
     }
+
+    async fn resolve(&self, task_id_str: &str) -> Result<i64, String> {
+        let task_ref = TaskRef::parse(task_id_str).map_err(|e| e.to_string())?;
+        resolve_task_ref(&self.client, self.project_config.project_id, &task_ref)
+            .await
+            .map_err(|e| format!("Failed to resolve task reference: {e}"))
+    }
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -64,22 +71,22 @@ pub struct ListTasksParams {
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct TaskIdParams {
-    #[schemars(description = "Task ID")]
-    pub task_id: i64,
+    #[schemars(description = "Task identifier (e.g. \"VEIN-3\") or numeric ID (e.g. \"42\")")]
+    pub task_id: String,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct CommentParams {
-    #[schemars(description = "Task ID")]
-    pub task_id: i64,
+    #[schemars(description = "Task identifier (e.g. \"VEIN-3\") or numeric ID (e.g. \"42\")")]
+    pub task_id: String,
     #[schemars(description = "Comment text")]
     pub comment: String,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct UpdateTaskParams {
-    #[schemars(description = "Task ID")]
-    pub task_id: i64,
+    #[schemars(description = "Task identifier (e.g. \"VEIN-3\") or numeric ID (e.g. \"42\")")]
+    pub task_id: String,
     #[schemars(description = "New title (optional)")]
     pub title: Option<String>,
     #[schemars(description = "New description (optional)")]
@@ -96,18 +103,20 @@ pub struct CreateLabelParams {
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct AddLabelParams {
-    #[schemars(description = "Task ID")]
-    pub task_id: i64,
+    #[schemars(description = "Task identifier (e.g. \"VEIN-3\") or numeric ID (e.g. \"42\")")]
+    pub task_id: String,
     #[schemars(description = "Label ID to assign")]
     pub label_id: i64,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct AddRelationParams {
-    #[schemars(description = "Task ID")]
-    pub task_id: i64,
-    #[schemars(description = "Other task ID to relate to")]
-    pub other_task_id: i64,
+    #[schemars(description = "Task identifier (e.g. \"VEIN-3\") or numeric ID (e.g. \"42\")")]
+    pub task_id: String,
+    #[schemars(
+        description = "Other task identifier (e.g. \"VEIN-3\") or numeric ID (e.g. \"42\")"
+    )]
+    pub other_task_id: String,
     #[schemars(
         description = "Relation kind: blocked, blocking, related, subtask, parenttask, duplicateof, duplicates, precedes, follows, copiedfrom, copiedto"
     )]
@@ -178,6 +187,7 @@ You are connected to a Vikunja-backed issue tracker. Use the tools below to mana
 2. **While working**: Use `comment` to log progress, decisions, and blockers.
 3. **When done**: Use `complete` to mark the task finished. Add a final `comment` summarizing what was done.
 4. **Task descriptions**: Use `update_task` to rewrite the description when the plan changes. Use `comment` for incremental progress notes.
+5. **Labels** Use labels for bugs, features, tests, ci, etc, including existing project labels.
 
 ## Current State
 
@@ -226,7 +236,11 @@ impl VeinServer {
             .await
             .map_err(|e| format!("Failed to create task: {e}"))?;
 
-        Ok(format!("Created task #{}: {}", task.id, task.title))
+        Ok(format!(
+            "Created task {}: {}",
+            task.display_id(),
+            task.title
+        ))
     }
 
     /// List tasks currently being worked on (in the In Progress bucket)
@@ -267,9 +281,10 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<TaskIdParams>,
     ) -> Result<String, String> {
+        let task_id = self.resolve(&params.task_id).await?;
         let task = self
             .client
-            .get_task(params.task_id)
+            .get_task(task_id)
             .await
             .map_err(|e| format!("Failed to get task: {e}"))?;
 
@@ -282,25 +297,23 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<CommentParams>,
     ) -> Result<String, String> {
+        let task_id = self.resolve(&params.task_id).await?;
         let html_comment = markdown_to_html(&params.comment);
-        let comment = self
-            .client
-            .create_comment(params.task_id, &html_comment)
+        self.client
+            .create_comment(task_id, &html_comment)
             .await
             .map_err(|e| format!("Failed to add comment: {e}"))?;
 
-        Ok(format!(
-            "Added comment #{} to task #{}",
-            comment.id, params.task_id
-        ))
+        Ok(format!("Added comment to task {}", params.task_id))
     }
 
     /// Claim a task by moving it to the In Progress bucket
     #[tool(name = "claim")]
     async fn claim(&self, Parameters(params): Parameters<TaskIdParams>) -> Result<String, String> {
+        let task_id = self.resolve(&params.task_id).await?;
         let task = self
             .client
-            .get_task(params.task_id)
+            .get_task(task_id)
             .await
             .map_err(|e| format!("Failed to claim task: {e}"))?;
 
@@ -309,12 +322,16 @@ impl VeinServer {
                 self.project_config.project_id,
                 self.project_config.view_id,
                 self.project_config.inprogress_bucket_id,
-                params.task_id,
+                task_id,
             )
             .await
             .map_err(|e| format!("Failed to claim task: {e}"))?;
 
-        Ok(format!("Claimed task #{}: {}", task.id, task.title))
+        Ok(format!(
+            "Claimed task {}: {}",
+            task.display_id(),
+            task.title
+        ))
     }
 
     /// Mark a task as done by moving it to the Done bucket
@@ -323,10 +340,11 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<TaskIdParams>,
     ) -> Result<String, String> {
+        let task_id = self.resolve(&params.task_id).await?;
         let task = self
             .client
             .update_task(
-                params.task_id,
+                task_id,
                 crate::client::TaskUpdate {
                     done: Some(true),
                     ..Default::default()
@@ -340,12 +358,16 @@ impl VeinServer {
                 self.project_config.project_id,
                 self.project_config.view_id,
                 self.project_config.done_bucket_id,
-                params.task_id,
+                task_id,
             )
             .await
             .map_err(|e| format!("Failed to complete task: {e}"))?;
 
-        Ok(format!("Completed task #{}: {}", task.id, task.title))
+        Ok(format!(
+            "Completed task {}: {}",
+            task.display_id(),
+            task.title
+        ))
     }
 
     /// Add a relation between two tasks
@@ -354,15 +376,17 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<AddRelationParams>,
     ) -> Result<String, String> {
+        let task_id = self.resolve(&params.task_id).await?;
+        let other_task_id = self.resolve(&params.other_task_id).await?;
         let relation = self
             .client
-            .create_relation(params.task_id, params.other_task_id, &params.relation_kind)
+            .create_relation(task_id, other_task_id, &params.relation_kind)
             .await
             .map_err(|e| format!("Failed to add relation: {e}"))?;
 
         Ok(format!(
-            "Added {} relation: #{} -> #{}",
-            relation.relation_kind, relation.task_id, relation.other_task_id
+            "Added {} relation: {} -> {}",
+            relation.relation_kind, params.task_id, params.other_task_id
         ))
     }
 
@@ -372,12 +396,13 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<UpdateTaskParams>,
     ) -> Result<String, String> {
+        let task_id = self.resolve(&params.task_id).await?;
         let description = params.description.map(|d| markdown_to_html(&d));
         let priority = params.priority.map(|p| parse_priority(&p)).transpose()?;
         let task = self
             .client
             .update_task(
-                params.task_id,
+                task_id,
                 crate::client::TaskUpdate {
                     title: params.title,
                     description,
@@ -388,7 +413,11 @@ impl VeinServer {
             .await
             .map_err(|e| format!("Failed to update task: {e}"))?;
 
-        Ok(format!("Updated task #{}: {}", task.id, task.title))
+        Ok(format!(
+            "Updated task {}: {}",
+            task.display_id(),
+            task.title
+        ))
     }
 
     /// Create a new label
@@ -412,14 +441,15 @@ impl VeinServer {
         &self,
         Parameters(params): Parameters<AddLabelParams>,
     ) -> Result<String, String> {
+        let task_id = self.resolve(&params.task_id).await?;
         self.client
-            .add_label_to_task(params.task_id, params.label_id)
+            .add_label_to_task(task_id, params.label_id)
             .await
             .map_err(|e| format!("Failed to add label: {e}"))?;
 
         Ok(format!(
-            "Added label #{} to task #{}",
-            params.label_id, params.task_id
+            "Added label #{} to task {}",
+            params.label_id, params.task_id,
         ))
     }
 
@@ -496,8 +526,11 @@ pub fn format_task_list(tasks: &[Task], empty_message: &str) -> String {
             _ => " (unknown priority)",
         };
         lines.push(format!(
-            "- #{}: {}{}{}",
-            task.id, task.title, priority_str, label_str
+            "- {}: {}{}{}",
+            task.display_id(),
+            task.title,
+            priority_str,
+            label_str
         ));
     }
 
@@ -505,7 +538,7 @@ pub fn format_task_list(tasks: &[Task], empty_message: &str) -> String {
 }
 
 pub fn format_task_detail(task: &Task) -> String {
-    let mut lines = vec![format!("# #{}: {}", task.id, task.title)];
+    let mut lines = vec![format!("# {}: {}", task.display_id(), task.title)];
 
     let status = if task.done { "Done" } else { "Open" };
     lines.push(format!("Status: {status}"));
@@ -536,7 +569,7 @@ pub fn format_task_detail(task: &Task) -> String {
         lines.push("Relations:".to_string());
         for (kind, related) in &task.related_tasks {
             for t in related {
-                lines.push(format!("  - {kind}: #{} {}", t.id, t.title));
+                lines.push(format!("  - {kind}: {} {}", t.display_id(), t.title));
             }
         }
     }
@@ -574,6 +607,8 @@ mod tests {
     fn make_task(id: i64, title: &str, priority: i64, labels: Vec<&str>) -> Task {
         Task {
             id,
+            identifier: String::new(),
+            index: 0,
             title: title.to_string(),
             description: String::new(),
             done: false,
@@ -631,6 +666,8 @@ mod tests {
             "blocked".to_string(),
             vec![Task {
                 id: 10,
+                identifier: String::new(),
+                index: 0,
                 title: "Reset flow".to_string(),
                 description: String::new(),
                 done: false,
@@ -720,8 +757,9 @@ mod tests {
 
     #[test]
     fn update_task_params_accepts_priority() {
-        let json = r#"{"task_id": 1, "priority": "urgent"}"#;
+        let json = r#"{"task_id": "VEIN-1", "priority": "urgent"}"#;
         let params: UpdateTaskParams = serde_json::from_str(json).unwrap();
+        assert_eq!(params.task_id, "VEIN-1");
         assert_eq!(params.priority.as_deref(), Some("urgent"));
     }
 
@@ -734,6 +772,26 @@ mod tests {
             attr.arguments.is_none() || attr.arguments.as_ref().unwrap().is_empty(),
             "prime prompt should have no arguments"
         );
+    }
+
+    #[test]
+    fn format_task_list_uses_identifier_when_present() {
+        let mut task = make_task(42, "Fix bug", 3, vec!["auth"]);
+        task.identifier = "VEIN-5".to_string();
+        task.index = 5;
+        let result = format_task_list(&[task], "No tasks.");
+        assert!(result.contains("- VEIN-5: Fix bug (high) [auth]"));
+        assert!(!result.contains("#42"));
+    }
+
+    #[test]
+    fn format_task_detail_uses_identifier_when_present() {
+        let mut task = make_task(42, "Fix bug", 3, vec![]);
+        task.identifier = "VEIN-5".to_string();
+        task.index = 5;
+        let result = format_task_detail(&task);
+        assert!(result.contains("# VEIN-5: Fix bug"));
+        assert!(!result.contains("#42"));
     }
 
     #[test]

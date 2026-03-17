@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Project identifier support: tasks display as `VEIN-3` instead of `#17` when the project has an identifier configured
+- All task-referencing tools and CLI commands accept identifiers (e.g. `VEIN-3`) or numeric IDs
+
 ### Fixed
 
 - Integration tests use drop guard to clean up projects even on failure

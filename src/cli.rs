@@ -47,10 +47,10 @@ pub enum ToolCommand {
         #[arg(short, long)]
         search: Option<String>,
     },
-    /// Get full details of a task by ID
+    /// Get full details of a task by identifier (e.g. VEIN-3) or numeric ID
     GetTask {
-        /// Task ID
-        task_id: i64,
+        /// Task identifier (e.g. VEIN-3) or numeric ID
+        task_id: String,
     },
     /// List tasks currently in progress
     ListInProgress,
@@ -58,25 +58,25 @@ pub enum ToolCommand {
     ListDone,
     /// Claim a task (move to In Progress)
     Claim {
-        /// Task ID
-        task_id: i64,
+        /// Task identifier (e.g. VEIN-3) or numeric ID
+        task_id: String,
     },
     /// Mark a task as done
     Complete {
-        /// Task ID
-        task_id: i64,
+        /// Task identifier (e.g. VEIN-3) or numeric ID
+        task_id: String,
     },
     /// Add a comment to a task
     Comment {
-        /// Task ID
-        task_id: i64,
+        /// Task identifier (e.g. VEIN-3) or numeric ID
+        task_id: String,
         /// Comment text
         comment: String,
     },
     /// Update an existing task's title, description, or priority
     UpdateTask {
-        /// Task ID
-        task_id: i64,
+        /// Task identifier (e.g. VEIN-3) or numeric ID
+        task_id: String,
         /// New title
         #[arg(short, long)]
         title: Option<String>,
@@ -94,8 +94,8 @@ pub enum ToolCommand {
     },
     /// Add a label to a task
     AddLabel {
-        /// Task ID
-        task_id: i64,
+        /// Task identifier (e.g. VEIN-3) or numeric ID
+        task_id: String,
         /// Label ID
         label_id: i64,
     },
@@ -103,10 +103,10 @@ pub enum ToolCommand {
     ListLabels,
     /// Add a relation between two tasks
     AddRelation {
-        /// Task ID
-        task_id: i64,
-        /// Other task ID to relate to
-        other_task_id: i64,
+        /// Task identifier (e.g. VEIN-3) or numeric ID
+        task_id: String,
+        /// Other task identifier (e.g. VEIN-3) or numeric ID
+        other_task_id: String,
         /// Relation kind (blocked, blocking, related, subtask, parenttask, etc.)
         relation_kind: String,
     },
@@ -214,12 +214,23 @@ mod tests {
     #[test]
     fn parses_tool_get_task_subcommand() {
         let cli = Cli::parse_from(["vein", "tool", "get-task", "42"]);
-        assert!(matches!(
-            cli.command,
+        match cli.command {
             Some(Command::Tool {
-                tool: ToolCommand::GetTask { task_id: 42 }
-            })
-        ));
+                tool: ToolCommand::GetTask { task_id },
+            }) => assert_eq!(task_id, "42"),
+            other => panic!("expected GetTask, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parses_tool_get_task_with_identifier() {
+        let cli = Cli::parse_from(["vein", "tool", "get-task", "VEIN-3"]);
+        match cli.command {
+            Some(Command::Tool {
+                tool: ToolCommand::GetTask { task_id },
+            }) => assert_eq!(task_id, "VEIN-3"),
+            other => panic!("expected GetTask, got {other:?}"),
+        }
     }
 
     #[test]
@@ -247,23 +258,23 @@ mod tests {
     #[test]
     fn parses_tool_complete_subcommand() {
         let cli = Cli::parse_from(["vein", "tool", "complete", "42"]);
-        assert!(matches!(
-            cli.command,
+        match cli.command {
             Some(Command::Tool {
-                tool: ToolCommand::Complete { task_id: 42 }
-            })
-        ));
+                tool: ToolCommand::Complete { task_id },
+            }) => assert_eq!(task_id, "42"),
+            other => panic!("expected Complete, got {other:?}"),
+        }
     }
 
     #[test]
     fn parses_tool_claim_subcommand() {
-        let cli = Cli::parse_from(["vein", "tool", "claim", "42"]);
-        assert!(matches!(
-            cli.command,
+        let cli = Cli::parse_from(["vein", "tool", "claim", "VEIN-3"]);
+        match cli.command {
             Some(Command::Tool {
-                tool: ToolCommand::Claim { task_id: 42 }
-            })
-        ));
+                tool: ToolCommand::Claim { task_id },
+            }) => assert_eq!(task_id, "VEIN-3"),
+            other => panic!("expected Claim, got {other:?}"),
+        }
     }
 
     #[test]
@@ -273,7 +284,7 @@ mod tests {
             Some(Command::Tool {
                 tool: ToolCommand::Comment { task_id, comment },
             }) => {
-                assert_eq!(task_id, 42);
+                assert_eq!(task_id, "42");
                 assert_eq!(comment, "Work in progress");
             }
             other => panic!("expected Comment, got {other:?}"),
@@ -302,7 +313,7 @@ mod tests {
                         ..
                     },
             }) => {
-                assert_eq!(task_id, 42);
+                assert_eq!(task_id, "42");
                 assert_eq!(title.as_deref(), Some("New title"));
                 assert_eq!(description.as_deref(), Some("New desc"));
             }
@@ -312,7 +323,14 @@ mod tests {
 
     #[test]
     fn parses_tool_add_relation_subcommand() {
-        let cli = Cli::parse_from(["vein", "tool", "add-relation", "1", "2", "blocked"]);
+        let cli = Cli::parse_from([
+            "vein",
+            "tool",
+            "add-relation",
+            "VEIN-1",
+            "VEIN-2",
+            "blocked",
+        ]);
         match cli.command {
             Some(Command::Tool {
                 tool:
@@ -322,8 +340,8 @@ mod tests {
                         relation_kind,
                     },
             }) => {
-                assert_eq!(task_id, 1);
-                assert_eq!(other_task_id, 2);
+                assert_eq!(task_id, "VEIN-1");
+                assert_eq!(other_task_id, "VEIN-2");
                 assert_eq!(relation_kind, "blocked");
             }
             other => panic!("expected AddRelation, got {other:?}"),

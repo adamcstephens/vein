@@ -1,7 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rmcp::ServiceExt;
-use vein::client::{ReqwestClient, TaskUpdate, VikunjaClient};
+use vein::client::{ReqwestClient, TaskRef, TaskUpdate, VikunjaClient, resolve_task_ref};
 use vein::config::{ConnectionConfig, ProjectConfig};
 use vein::server::VeinServer;
 
@@ -11,6 +11,20 @@ fn unique_project_name() -> String {
         .expect("clock went backwards")
         .as_millis();
     format!("vein-test-{}-{}", std::process::id(), ts)
+}
+
+fn random_identifier() -> String {
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock went backwards")
+        .as_nanos();
+    let mut val = ts ^ (std::process::id() as u128);
+    let mut chars = Vec::with_capacity(4);
+    for _ in 0..4 {
+        chars.push(b'A' + (val % 26) as u8);
+        val /= 26;
+    }
+    String::from_utf8(chars).expect("valid ascii")
 }
 
 /// Create a ReqwestClient from env vars, or panic if not set.
@@ -29,9 +43,16 @@ struct TestProject {
 
 impl TestProject {
     async fn create(client: ReqwestClient) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::create_with_identifier(client, None).await
+    }
+
+    async fn create_with_identifier(
+        client: ReqwestClient,
+        identifier: Option<&str>,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let name = unique_project_name();
         let project = client
-            .create_project(&name, "Auto-created by integration tests")
+            .create_project(&name, "Auto-created by integration tests", identifier)
             .await?;
 
         let views = client.list_views(project.id).await?;
@@ -185,7 +206,7 @@ async fn create_and_delete_test_project() {
 
     let name = unique_project_name();
     let project = vikunja
-        .create_project(&name, "Temp project for testing")
+        .create_project(&name, "Temp project for testing", None)
         .await
         .expect("failed to create project");
 
@@ -301,4 +322,50 @@ async fn claim_moves_task_to_in_progress_bucket() {
         !todo.iter().any(|t| t.id == task.id),
         "task should not be in the todo bucket after move"
     );
+}
+
+#[tokio::test]
+async fn task_identifier_resolves_to_correct_task() {
+    let client = vikunja_client();
+    let ident = random_identifier();
+    let test_project = TestProject::create_with_identifier(client, Some(&ident))
+        .await
+        .expect("failed to create project with identifier");
+
+    let client = vikunja_client();
+
+    // Create two tasks — they should get {IDENT}-1 and {IDENT}-2
+    let task1 = client
+        .create_task(test_project.config.project_id, "First task", "", None)
+        .await
+        .expect("failed to create task 1");
+    let task2 = client
+        .create_task(test_project.config.project_id, "Second task", "", None)
+        .await
+        .expect("failed to create task 2");
+
+    assert_eq!(task1.identifier, format!("{ident}-1"));
+    assert_eq!(task2.identifier, format!("{ident}-2"));
+    assert_eq!(task1.display_id(), format!("{ident}-1"));
+
+    // Resolve {IDENT}-2 to its numeric ID
+    let ref_str = format!("{ident}-2");
+    let task_ref = TaskRef::parse(&ref_str).expect("failed to parse identifier");
+    let resolved_id = resolve_task_ref(&client, test_project.config.project_id, &task_ref)
+        .await
+        .expect("failed to resolve identifier");
+
+    assert_eq!(
+        resolved_id, task2.id,
+        "identifier should resolve to task2's ID"
+    );
+
+    // Fetch by resolved ID and verify it's the right task
+    let fetched = client
+        .get_task(resolved_id)
+        .await
+        .expect("failed to get task by resolved ID");
+
+    assert_eq!(fetched.title, "Second task");
+    assert_eq!(fetched.identifier, format!("{ident}-2"));
 }

@@ -2,7 +2,7 @@ use clap::Parser;
 use rmcp::ServiceExt;
 
 use vein::cli::{Cli, Command, ToolCommand};
-use vein::client::{ReqwestClient, VikunjaClient};
+use vein::client::{ReqwestClient, TaskRef, VikunjaClient, resolve_task_ref};
 use vein::config::{ConnectionConfig, ProjectConfig};
 use vein::init;
 use vein::markdown::markdown_to_html;
@@ -55,6 +55,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let conn_config = ConnectionConfig::from_env()?;
             let project_config = ProjectConfig::from_env()?;
             let client = ReqwestClient::new(&conn_config)?;
+            macro_rules! resolve {
+                ($s:expr) => {{
+                    let task_ref = TaskRef::parse($s).map_err(|e| e.to_string())?;
+                    resolve_task_ref(&client, project_config.project_id, &task_ref).await?
+                }};
+            }
             match tool {
                 ToolCommand::ListReady => {
                     let ready = fetch_ready_tasks(&client, &project_config).await?;
@@ -98,25 +104,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("{}", format_task_list(&tasks, "No completed tasks."));
                 }
                 ToolCommand::GetTask { task_id } => {
-                    let task = client.get_task(task_id).await?;
+                    let id = resolve!(&task_id);
+                    let task = client.get_task(id).await?;
                     println!("{}", format_task_detail(&task));
                 }
                 ToolCommand::Claim { task_id } => {
-                    let task = client.get_task(task_id).await?;
+                    let id = resolve!(&task_id);
+                    let task = client.get_task(id).await?;
                     client
                         .move_task_to_bucket(
                             project_config.project_id,
                             project_config.view_id,
                             project_config.inprogress_bucket_id,
-                            task_id,
+                            id,
                         )
                         .await?;
-                    println!("Claimed task #{}: {}", task.id, task.title);
+                    println!("Claimed task {}: {}", task.display_id(), task.title);
                 }
                 ToolCommand::Complete { task_id } => {
+                    let id = resolve!(&task_id);
                     let task = client
                         .update_task(
-                            task_id,
+                            id,
                             vein::client::TaskUpdate {
                                 done: Some(true),
                                 ..Default::default()
@@ -128,23 +137,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             project_config.project_id,
                             project_config.view_id,
                             project_config.done_bucket_id,
-                            task_id,
+                            id,
                         )
                         .await?;
-                    println!("Completed task #{}: {}", task.id, task.title);
+                    println!("Completed task {}: {}", task.display_id(), task.title);
                 }
                 ToolCommand::Comment { task_id, comment } => {
+                    let id = resolve!(&task_id);
                     let html_comment = markdown_to_html(&comment);
-                    let result = client.create_comment(task_id, &html_comment).await?;
-                    println!("Added comment #{} to task #{}", result.id, task_id);
+                    client.create_comment(id, &html_comment).await?;
+                    println!("Added comment to task {task_id}");
                 }
                 ToolCommand::CreateLabel { title } => {
                     let label = client.create_label(&title).await?;
                     println!("Created label #{}: {}", label.id, label.title);
                 }
                 ToolCommand::AddLabel { task_id, label_id } => {
-                    client.add_label_to_task(task_id, label_id).await?;
-                    println!("Added label #{label_id} to task #{task_id}");
+                    let id = resolve!(&task_id);
+                    client.add_label_to_task(id, label_id).await?;
+                    println!("Added label #{label_id} to task {task_id}");
                 }
                 ToolCommand::ListLabels => {
                     let labels = client.list_labels().await?;
@@ -161,12 +172,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     other_task_id,
                     relation_kind,
                 } => {
-                    let relation = client
-                        .create_relation(task_id, other_task_id, &relation_kind)
-                        .await?;
+                    let id = resolve!(&task_id);
+                    let other_id = resolve!(&other_task_id);
+                    let relation = client.create_relation(id, other_id, &relation_kind).await?;
                     println!(
-                        "Added {} relation: #{} -> #{}",
-                        relation.relation_kind, relation.task_id, relation.other_task_id
+                        "Added {} relation: {} -> {}",
+                        relation.relation_kind, task_id, other_task_id
                     );
                 }
                 ToolCommand::UpdateTask {
@@ -175,13 +186,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     description,
                     priority,
                 } => {
+                    let id = resolve!(&task_id);
                     let priority = priority
                         .map(|p| vein::server::parse_priority(&p))
                         .transpose()?;
                     let description = description.map(|d| markdown_to_html(&d));
                     let task = client
                         .update_task(
-                            task_id,
+                            id,
                             vein::client::TaskUpdate {
                                 title,
                                 description,
@@ -190,7 +202,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             },
                         )
                         .await?;
-                    println!("Updated task #{}: {}", task.id, task.title);
+                    println!("Updated task {}: {}", task.display_id(), task.title);
                 }
                 ToolCommand::CreateTask {
                     title,
@@ -209,7 +221,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             priority,
                         )
                         .await?;
-                    println!("Created task #{}: {}", task.id, task.title);
+                    println!("Created task {}: {}", task.display_id(), task.title);
                 }
             }
             Ok(())

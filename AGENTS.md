@@ -1,5 +1,6 @@
 ## Agent workflow
-- **IMPORTANT**: before you do anything else, run the `beans prime` command and heed its output.
+- **IMPORTANT**: before you do anything else, invoke the vein `orient` MCP prompt and heed its output with `/mcp__vein__orient`.
+- When asked about beans, run the `beans prime` command and heed its output.
 - Always use red/green TDD when implementing
 - Always format code with `just format`
 - Always check code linting with `just lint`
