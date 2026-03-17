@@ -167,7 +167,7 @@ You are connected to a Vikunja-backed issue tracker. Use the tools below to mana
 
 ## Workflow
 
-1. **Before starting work**: Check for existing tasks with `list_ready` or `list_tasks`. If one matches your work, `claim` it. If not, `create_task` first.
+1. **Before starting work**: Check for existing tasks with `list_ready` or `list_tasks`. If one matches your work, `claim` it. If not, `create_task` first. If claiming fails due to bucket limit, stop.
 2. **While working**: Use `comment` to log progress, decisions, and blockers.
 3. **When done**: Use `complete` to mark the task finished. Add a final `comment` summarizing what was done.
 4. **Task descriptions**: Use `update_task` to rewrite the description when the plan changes. Use `comment` for incremental progress notes.
