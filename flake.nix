@@ -33,7 +33,10 @@
             ];
           };
 
-          packages.default = pkgs.callPackage ./nix/package.nix { };
+          packages = rec {
+            default = vein;
+            vein = pkgs.callPackage ./nix/package.nix { };
+          };
         };
     };
 }
