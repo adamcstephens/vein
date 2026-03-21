@@ -77,6 +77,8 @@ pub struct TaskRelation {
 pub struct Bucket {
     pub id: i64,
     pub title: String,
+    #[serde(default, deserialize_with = "deserialize_null_default")]
+    pub tasks: Vec<Task>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -463,7 +465,21 @@ impl VikunjaClient for ReqwestClient {
             .send()
             .await?;
         let resp = Self::check_response(resp).await?;
-        Ok(resp.json().await?)
+
+        // Vikunja returns Vec<Bucket> where each bucket contains a tasks array.
+        // We flatten these into a single Vec<Task>, setting bucket_id from the
+        // containing bucket.
+        let buckets: Vec<Bucket> = resp.json().await?;
+        Ok(buckets
+            .into_iter()
+            .flat_map(|bucket| {
+                let bucket_id = bucket.id;
+                bucket.tasks.into_iter().map(move |mut task| {
+                    task.bucket_id = bucket_id;
+                    task
+                })
+            })
+            .collect())
     }
 
     async fn create_task(

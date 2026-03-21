@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- `list_tasks` MCP tool no longer errors when called without filters
 - Integration tests use drop guard to clean up projects even on failure
 - Provision script: fix login username typo and invalid API token permission group
 - Provision script: add error handling to prevent writing empty values to `.secret.envrc`

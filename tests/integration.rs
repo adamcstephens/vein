@@ -326,6 +326,139 @@ async fn claim_moves_task_to_in_progress_bucket() {
 }
 
 #[tokio::test]
+async fn list_view_tasks_without_filter_returns_all_tasks() {
+    let test_project = TestProject::create(vikunja_client())
+        .await
+        .expect("failed to create test project");
+
+    let client = vikunja_client();
+
+    // Create tasks in different buckets
+    let task1 = client
+        .create_task(test_project.config.project_id, "Todo task", "", None)
+        .await
+        .expect("failed to create task 1");
+
+    let task2 = client
+        .create_task(test_project.config.project_id, "Doing task", "", None)
+        .await
+        .expect("failed to create task 2");
+
+    // Move task2 to in-progress bucket
+    client
+        .move_task_to_bucket(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            test_project.config.inprogress_bucket_id,
+            task2.id,
+        )
+        .await
+        .expect("failed to move task to in-progress bucket");
+
+    // list_view_tasks with no filter should return all tasks
+    let tasks = client
+        .list_view_tasks(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            None,
+            None,
+        )
+        .await
+        .expect("list_view_tasks without filter should not error");
+
+    assert!(
+        tasks.iter().any(|t| t.id == task1.id),
+        "should contain the todo task"
+    );
+    assert!(
+        tasks.iter().any(|t| t.id == task2.id),
+        "should contain the in-progress task"
+    );
+
+    // Verify bucket_id is correctly populated
+    let found1 = tasks.iter().find(|t| t.id == task1.id).unwrap();
+    assert_eq!(
+        found1.bucket_id, test_project.config.todo_bucket_id,
+        "todo task should have todo bucket_id"
+    );
+
+    let found2 = tasks.iter().find(|t| t.id == task2.id).unwrap();
+    assert_eq!(
+        found2.bucket_id, test_project.config.inprogress_bucket_id,
+        "in-progress task should have inprogress bucket_id"
+    );
+
+    // list_view_tasks with a filter should also work
+    let filtered = client
+        .list_view_tasks(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            Some("done = false"),
+            None,
+        )
+        .await
+        .expect("list_view_tasks with filter should not error");
+
+    assert!(
+        filtered.iter().any(|t| t.id == task1.id),
+        "filtered results should contain undone task"
+    );
+
+    // list_view_tasks with search should work
+    let searched = client
+        .list_view_tasks(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            None,
+            Some("Doing"),
+        )
+        .await
+        .expect("list_view_tasks with search should not error");
+
+    assert!(
+        searched.iter().any(|t| t.id == task2.id),
+        "search results should contain matching task"
+    );
+    assert!(
+        !searched.iter().any(|t| t.id == task1.id),
+        "search results should not contain non-matching task"
+    );
+
+    // list_view_tasks with both filter and search should work
+    let combined = client
+        .list_view_tasks(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            Some("done = false"),
+            Some("Todo"),
+        )
+        .await
+        .expect("list_view_tasks with filter and search should not error");
+
+    assert!(
+        combined.iter().any(|t| t.id == task1.id),
+        "combined filter+search should find matching task"
+    );
+    assert!(
+        !combined.iter().any(|t| t.id == task2.id),
+        "combined filter+search should exclude non-matching task"
+    );
+
+    // list_view_tasks with a filter matching nothing should return empty
+    let empty = client
+        .list_view_tasks(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            Some("priority = 99"),
+            None,
+        )
+        .await
+        .expect("list_view_tasks with no-match filter should not error");
+
+    assert!(empty.is_empty(), "no-match filter should return empty vec");
+}
+
+#[tokio::test]
 async fn task_identifier_resolves_to_correct_task() {
     let client = vikunja_client();
     let ident = random_identifier();
