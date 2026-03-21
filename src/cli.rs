@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use clap_complete::Shell;
 
 #[derive(Parser, Debug)]
 #[command(name = "vein", about = "Agent-focused issue tracker backed by Vikunja")]
@@ -27,6 +28,11 @@ pub enum Command {
     },
     /// Run as MCP stdio server (default if no subcommand given)
     Serve,
+    /// Generate shell completion script
+    Completions {
+        /// Shell to generate completions for
+        shell: Shell,
+    },
     /// List tasks ready to be worked on (Todo bucket)
     ListReady,
     /// List and search tasks across all buckets
@@ -148,6 +154,33 @@ mod tests {
                 project_id: 5,
                 view_id: 10
             })
+        ));
+    }
+
+    #[test]
+    fn parses_completions_subcommand() {
+        let cli = Cli::parse_from(["vein", "completions", "fish"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Completions { shell: Shell::Fish })
+        ));
+    }
+
+    #[test]
+    fn parses_completions_bash() {
+        let cli = Cli::parse_from(["vein", "completions", "bash"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Completions { shell: Shell::Bash })
+        ));
+    }
+
+    #[test]
+    fn parses_completions_zsh() {
+        let cli = Cli::parse_from(["vein", "completions", "zsh"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Completions { shell: Shell::Zsh })
         ));
     }
 

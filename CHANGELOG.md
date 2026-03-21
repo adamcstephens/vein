@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Shell completion support via `vein completions <shell>` (fish, bash, zsh)
 - Project identifier support: tasks display as `VEIN-3` instead of `#17` when the project has an identifier configured
 - All task-referencing tools and CLI commands accept identifiers (e.g. `VEIN-3`) or numeric IDs
 

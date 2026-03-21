@@ -1,4 +1,5 @@
-use clap::Parser;
+use clap::{CommandFactory, Parser};
+use clap_complete::generate;
 use rmcp::ServiceExt;
 
 use vein::cli::{Cli, Command};
@@ -49,6 +50,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             for bucket in buckets {
                 println!("{}\t{}", bucket.id, bucket.title);
             }
+            Ok(())
+        }
+        Some(Command::Completions { shell }) => {
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "vein", &mut std::io::stdout());
             Ok(())
         }
         Some(
