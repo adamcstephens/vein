@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Flatten CLI: all commands are now top-level (e.g. `vein list-ready` instead of `vein tool list-ready`)
 - Extract `ProjectClient` domain layer: project-scoped operations (resolve, claim, complete, comment, etc.) are now centralized instead of duplicated between MCP server and CLI
 
 ### Added

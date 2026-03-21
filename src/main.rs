@@ -1,7 +1,7 @@
 use clap::Parser;
 use rmcp::ServiceExt;
 
-use vein::cli::{Cli, Command, ToolCommand};
+use vein::cli::{Cli, Command};
 use vein::client::{ReqwestClient, VikunjaClient};
 use vein::config::{ConnectionConfig, ProjectConfig};
 use vein::init;
@@ -51,61 +51,76 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Ok(())
         }
-        Some(Command::Tool { tool }) => {
+        Some(
+            Command::ListReady
+            | Command::ListTasks { .. }
+            | Command::ListInProgress
+            | Command::ListDone
+            | Command::GetTask { .. }
+            | Command::Claim { .. }
+            | Command::Complete { .. }
+            | Command::Comment { .. }
+            | Command::CreateLabel { .. }
+            | Command::AddLabel { .. }
+            | Command::ListLabels
+            | Command::AddRelation { .. }
+            | Command::UpdateTask { .. }
+            | Command::CreateTask { .. },
+        ) => {
             let conn_config = ConnectionConfig::from_env()?;
             let project_config = ProjectConfig::from_env()?;
             let client = ReqwestClient::new(&conn_config)?;
             let project = ProjectClient::new(client, project_config);
-            match tool {
-                ToolCommand::ListReady => {
+            match cli.command.unwrap() {
+                Command::ListReady => {
                     let ready = project.list_ready().await?;
                     println!(
                         "{}",
                         format_task_list(&ready, "No tasks ready to be worked on.")
                     );
                 }
-                ToolCommand::ListTasks { filter, search } => {
+                Command::ListTasks { filter, search } => {
                     let tasks = project
                         .list_tasks(filter.as_deref(), search.as_deref())
                         .await?;
                     println!("{}", format_task_list(&tasks, "No tasks found."));
                 }
-                ToolCommand::ListInProgress => {
+                Command::ListInProgress => {
                     let tasks = project.list_in_progress().await?;
                     println!(
                         "{}",
                         format_task_list(&tasks, "No tasks currently in progress.")
                     );
                 }
-                ToolCommand::ListDone => {
+                Command::ListDone => {
                     let tasks = project.list_done().await?;
                     println!("{}", format_task_list(&tasks, "No completed tasks."));
                 }
-                ToolCommand::GetTask { task_id } => {
+                Command::GetTask { task_id } => {
                     let task = project.get_task(&task_id).await?;
                     println!("{}", format_task_detail(&task));
                 }
-                ToolCommand::Claim { task_id } => {
+                Command::Claim { task_id } => {
                     let task = project.claim(&task_id).await?;
                     println!("Claimed task {}: {}", task.display_id(), task.title);
                 }
-                ToolCommand::Complete { task_id } => {
+                Command::Complete { task_id } => {
                     let task = project.complete(&task_id).await?;
                     println!("Completed task {}: {}", task.display_id(), task.title);
                 }
-                ToolCommand::Comment { task_id, comment } => {
+                Command::Comment { task_id, comment } => {
                     project.comment(&task_id, &comment).await?;
                     println!("Added comment to task {task_id}");
                 }
-                ToolCommand::CreateLabel { title } => {
+                Command::CreateLabel { title } => {
                     let label = project.create_label(&title).await?;
                     println!("Created label #{}: {}", label.id, label.title);
                 }
-                ToolCommand::AddLabel { task_id, label_id } => {
+                Command::AddLabel { task_id, label_id } => {
                     project.add_label(&task_id, label_id).await?;
                     println!("Added label #{label_id} to task {task_id}");
                 }
-                ToolCommand::ListLabels => {
+                Command::ListLabels => {
                     let labels = project.list_labels().await?;
                     if labels.is_empty() {
                         println!("No labels found.");
@@ -115,7 +130,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
-                ToolCommand::AddRelation {
+                Command::AddRelation {
                     task_id,
                     other_task_id,
                     relation_kind,
@@ -128,7 +143,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         relation.relation_kind, task_id, other_task_id
                     );
                 }
-                ToolCommand::UpdateTask {
+                Command::UpdateTask {
                     task_id,
                     title,
                     description,
@@ -140,7 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .await?;
                     println!("Updated task {}: {}", task.display_id(), task.title);
                 }
-                ToolCommand::CreateTask {
+                Command::CreateTask {
                     title,
                     description,
                     priority,
@@ -151,6 +166,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .await?;
                     println!("Created task {}: {}", task.display_id(), task.title);
                 }
+                _ => unreachable!(),
             }
             Ok(())
         }

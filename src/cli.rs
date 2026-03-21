@@ -27,15 +27,6 @@ pub enum Command {
     },
     /// Run as MCP stdio server (default if no subcommand given)
     Serve,
-    /// Run an MCP tool directly from the CLI
-    Tool {
-        #[command(subcommand)]
-        tool: ToolCommand,
-    },
-}
-
-#[derive(Subcommand, Debug)]
-pub enum ToolCommand {
     /// List tasks ready to be worked on (Todo bucket)
     ListReady,
     /// List and search tasks across all buckets
@@ -161,48 +152,30 @@ mod tests {
     }
 
     #[test]
-    fn parses_tool_list_ready_subcommand() {
-        let cli = Cli::parse_from(["vein", "tool", "list-ready"]);
+    fn parses_list_ready_subcommand() {
+        let cli = Cli::parse_from(["vein", "list-ready"]);
+        assert!(matches!(cli.command, Some(Command::ListReady)));
+    }
+
+    #[test]
+    fn parses_list_tasks_subcommand() {
+        let cli = Cli::parse_from(["vein", "list-tasks"]);
         assert!(matches!(
             cli.command,
-            Some(Command::Tool {
-                tool: ToolCommand::ListReady
+            Some(Command::ListTasks {
+                filter: None,
+                search: None
             })
         ));
     }
 
     #[test]
-    fn parses_tool_list_tasks_subcommand() {
-        let cli = Cli::parse_from(["vein", "tool", "list-tasks"]);
-        assert!(matches!(
-            cli.command,
-            Some(Command::Tool {
-                tool: ToolCommand::ListTasks {
-                    filter: None,
-                    search: None
-                }
-            })
-        ));
-    }
-
-    #[test]
-    fn parses_tool_list_tasks_with_filter_and_search() {
-        let cli = Cli::parse_from([
-            "vein",
-            "tool",
-            "list-tasks",
-            "-f",
-            "done = false",
-            "-s",
-            "login",
-        ]);
+    fn parses_list_tasks_with_filter_and_search() {
+        let cli = Cli::parse_from(["vein", "list-tasks", "-f", "done = false", "-s", "login"]);
         match cli.command {
-            Some(Command::Tool {
-                tool:
-                    ToolCommand::ListTasks {
-                        filter: Some(f),
-                        search: Some(s),
-                    },
+            Some(Command::ListTasks {
+                filter: Some(f),
+                search: Some(s),
             }) => {
                 assert_eq!(f, "done = false");
                 assert_eq!(s, "login");
@@ -212,78 +185,58 @@ mod tests {
     }
 
     #[test]
-    fn parses_tool_get_task_subcommand() {
-        let cli = Cli::parse_from(["vein", "tool", "get-task", "42"]);
+    fn parses_get_task_subcommand() {
+        let cli = Cli::parse_from(["vein", "get-task", "42"]);
         match cli.command {
-            Some(Command::Tool {
-                tool: ToolCommand::GetTask { task_id },
-            }) => assert_eq!(task_id, "42"),
+            Some(Command::GetTask { task_id }) => assert_eq!(task_id, "42"),
             other => panic!("expected GetTask, got {other:?}"),
         }
     }
 
     #[test]
-    fn parses_tool_get_task_with_identifier() {
-        let cli = Cli::parse_from(["vein", "tool", "get-task", "VEIN-3"]);
+    fn parses_get_task_with_identifier() {
+        let cli = Cli::parse_from(["vein", "get-task", "VEIN-3"]);
         match cli.command {
-            Some(Command::Tool {
-                tool: ToolCommand::GetTask { task_id },
-            }) => assert_eq!(task_id, "VEIN-3"),
+            Some(Command::GetTask { task_id }) => assert_eq!(task_id, "VEIN-3"),
             other => panic!("expected GetTask, got {other:?}"),
         }
     }
 
     #[test]
-    fn parses_tool_list_in_progress_subcommand() {
-        let cli = Cli::parse_from(["vein", "tool", "list-in-progress"]);
-        assert!(matches!(
-            cli.command,
-            Some(Command::Tool {
-                tool: ToolCommand::ListInProgress
-            })
-        ));
+    fn parses_list_in_progress_subcommand() {
+        let cli = Cli::parse_from(["vein", "list-in-progress"]);
+        assert!(matches!(cli.command, Some(Command::ListInProgress)));
     }
 
     #[test]
-    fn parses_tool_list_done_subcommand() {
-        let cli = Cli::parse_from(["vein", "tool", "list-done"]);
-        assert!(matches!(
-            cli.command,
-            Some(Command::Tool {
-                tool: ToolCommand::ListDone
-            })
-        ));
+    fn parses_list_done_subcommand() {
+        let cli = Cli::parse_from(["vein", "list-done"]);
+        assert!(matches!(cli.command, Some(Command::ListDone)));
     }
 
     #[test]
-    fn parses_tool_complete_subcommand() {
-        let cli = Cli::parse_from(["vein", "tool", "complete", "42"]);
+    fn parses_complete_subcommand() {
+        let cli = Cli::parse_from(["vein", "complete", "42"]);
         match cli.command {
-            Some(Command::Tool {
-                tool: ToolCommand::Complete { task_id },
-            }) => assert_eq!(task_id, "42"),
+            Some(Command::Complete { task_id }) => assert_eq!(task_id, "42"),
             other => panic!("expected Complete, got {other:?}"),
         }
     }
 
     #[test]
-    fn parses_tool_claim_subcommand() {
-        let cli = Cli::parse_from(["vein", "tool", "claim", "VEIN-3"]);
+    fn parses_claim_subcommand() {
+        let cli = Cli::parse_from(["vein", "claim", "VEIN-3"]);
         match cli.command {
-            Some(Command::Tool {
-                tool: ToolCommand::Claim { task_id },
-            }) => assert_eq!(task_id, "VEIN-3"),
+            Some(Command::Claim { task_id }) => assert_eq!(task_id, "VEIN-3"),
             other => panic!("expected Claim, got {other:?}"),
         }
     }
 
     #[test]
-    fn parses_tool_comment_subcommand() {
-        let cli = Cli::parse_from(["vein", "tool", "comment", "42", "Work in progress"]);
+    fn parses_comment_subcommand() {
+        let cli = Cli::parse_from(["vein", "comment", "42", "Work in progress"]);
         match cli.command {
-            Some(Command::Tool {
-                tool: ToolCommand::Comment { task_id, comment },
-            }) => {
+            Some(Command::Comment { task_id, comment }) => {
                 assert_eq!(task_id, "42");
                 assert_eq!(comment, "Work in progress");
             }
@@ -292,10 +245,9 @@ mod tests {
     }
 
     #[test]
-    fn parses_tool_update_task_subcommand() {
+    fn parses_update_task_subcommand() {
         let cli = Cli::parse_from([
             "vein",
-            "tool",
             "update-task",
             "42",
             "-t",
@@ -304,14 +256,11 @@ mod tests {
             "New desc",
         ]);
         match cli.command {
-            Some(Command::Tool {
-                tool:
-                    ToolCommand::UpdateTask {
-                        task_id,
-                        title,
-                        description,
-                        ..
-                    },
+            Some(Command::UpdateTask {
+                task_id,
+                title,
+                description,
+                ..
             }) => {
                 assert_eq!(task_id, "42");
                 assert_eq!(title.as_deref(), Some("New title"));
@@ -322,23 +271,13 @@ mod tests {
     }
 
     #[test]
-    fn parses_tool_add_relation_subcommand() {
-        let cli = Cli::parse_from([
-            "vein",
-            "tool",
-            "add-relation",
-            "VEIN-1",
-            "VEIN-2",
-            "blocked",
-        ]);
+    fn parses_add_relation_subcommand() {
+        let cli = Cli::parse_from(["vein", "add-relation", "VEIN-1", "VEIN-2", "blocked"]);
         match cli.command {
-            Some(Command::Tool {
-                tool:
-                    ToolCommand::AddRelation {
-                        task_id,
-                        other_task_id,
-                        relation_kind,
-                    },
+            Some(Command::AddRelation {
+                task_id,
+                other_task_id,
+                relation_kind,
             }) => {
                 assert_eq!(task_id, "VEIN-1");
                 assert_eq!(other_task_id, "VEIN-2");
@@ -349,14 +288,11 @@ mod tests {
     }
 
     #[test]
-    fn parses_tool_create_task_subcommand() {
-        let cli = Cli::parse_from(["vein", "tool", "create-task", "Fix the bug"]);
+    fn parses_create_task_subcommand() {
+        let cli = Cli::parse_from(["vein", "create-task", "Fix the bug"]);
         match cli.command {
-            Some(Command::Tool {
-                tool:
-                    ToolCommand::CreateTask {
-                        title, description, ..
-                    },
+            Some(Command::CreateTask {
+                title, description, ..
             }) => {
                 assert_eq!(title, "Fix the bug");
                 assert_eq!(description, "");
@@ -366,21 +302,17 @@ mod tests {
     }
 
     #[test]
-    fn parses_tool_create_task_with_description() {
+    fn parses_create_task_with_description() {
         let cli = Cli::parse_from([
             "vein",
-            "tool",
             "create-task",
             "Fix the bug",
             "-d",
             "Something is broken",
         ]);
         match cli.command {
-            Some(Command::Tool {
-                tool:
-                    ToolCommand::CreateTask {
-                        title, description, ..
-                    },
+            Some(Command::CreateTask {
+                title, description, ..
             }) => {
                 assert_eq!(title, "Fix the bug");
                 assert_eq!(description, "Something is broken");
@@ -390,14 +322,11 @@ mod tests {
     }
 
     #[test]
-    fn parses_tool_create_task_with_priority() {
-        let cli = Cli::parse_from(["vein", "tool", "create-task", "Urgent bug", "-p", "high"]);
+    fn parses_create_task_with_priority() {
+        let cli = Cli::parse_from(["vein", "create-task", "Urgent bug", "-p", "high"]);
         match cli.command {
-            Some(Command::Tool {
-                tool:
-                    ToolCommand::CreateTask {
-                        title, priority, ..
-                    },
+            Some(Command::CreateTask {
+                title, priority, ..
             }) => {
                 assert_eq!(title, "Urgent bug");
                 assert_eq!(priority.as_deref(), Some("high"));
