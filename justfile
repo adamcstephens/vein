@@ -23,10 +23,14 @@ reset:
     rm -f .secret.envr
     just dev
 
+changelog:
+    git-cliff --unreleased
+
 # Release: just release 0.3.0
 release version:
+    git-cliff --tag "v{{ version }}" --output CHANGELOG.md
     sed -i 's/^version = ".*"/version = "{{ version }}"/' Cargo.toml
     cargo generate-lockfile --offline
-    jj commit --message "release {{ version }}" Cargo.*
-    git tag -a "v{{ version }}" -m "release {{ version }}"
-    git push origin "v{{ version }}"
+    jj commit --message "release: {{ version }}" Cargo.* CHANGELOG.md
+    jj tag set "v{{ version }}" --revision @-
+    jj bookmark move main --to @-

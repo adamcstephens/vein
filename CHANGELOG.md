@@ -1,61 +1,90 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-
-## [Unreleased]
+## [unreleased]
 
 ### Added
 
-- List commands return tasks ordered by column position (matching Kanban board order)
-
-### Changed
-
-- Running `vein` with no arguments now prints help instead of starting the MCP server
+- Order list results by column position
+- Print help when invoked with no arguments
 
 ### Fixed
 
-- All task references (`3`, `#3`, `VEIN-3`) resolve by project index — no global ID exposure
-- `display_id` uses project index when available, matching how identifiers work
-- `list_bucket_tasks` filters by bucket client-side instead of using invalid Vikunja filter
-
+- Resolve #N task refs by project index instead of global ID
+- Filter list_bucket_tasks by bucket client-side
+- Treat bare numeric task refs as project index
 ## [0.3.0] - 2026-03-21
 
-### Changed
-
-- Flatten CLI: all commands are now top-level (e.g. `vein list-ready` instead of `vein tool list-ready`)
-- Extract `ProjectClient` domain layer for project-scoped operations
-
 ### Added
 
-- Shell completion support via `vein completions <shell>` (fish, bash, zsh)
-- Nix package installs shell completions automatically
-- Project identifier support: tasks display as `VEIN-3` instead of `#17`
-- All task-referencing commands accept identifiers (e.g. `VEIN-3`) or numeric IDs
-- Markdown-to-HTML and HTML-to-markdown conversion for task descriptions and comments
-- `orient` MCP prompt for agent orientation
-- Priority support on `create_task` and `update_task`
-- MCP tools: `create_label`, `add_label`, `list_labels`, `list_tasks`, `update_task`, `add_relation`
-- `list_ready` filters out tasks blocked by incomplete tasks
+- *(mcp)* Add orient prompt for agent orientation
+- *(tools)* Add priority support to create_task and update_task
+- *(tools)* Add label management tools
+- *(tools)* Filter blocked tasks from list_ready
+- *(markdown)* Convert descriptions between markdown and HTML for Vikunja
+- Support project identifiers (e.g. VEIN-3) for task references
+- *(nix)* Add named package to flake
+- Add shell completion support
 
 ### Fixed
 
-- `list_tasks` no longer errors when called without filters
-- `update_task` no longer zeroes out fields not included in the update
-- Provision script fixes for login and error handling
+- *(client)* Fetch task before update to prevent field zeroing
+- *(provision)* Fix empty fields in .secret.envrc
+- *(test)* Use drop guard for integration test project cleanup
+- Buckets can have limits, give advice on this
+- Handle bucket-grouped response in list_view_tasks
 
-## [0.2.0] - 2026-03-18
+### Changed
+
+- Extract ProjectClient domain layer
+- *(test)* Rename integration test file and prefix MCP tests
+- Flatten CLI by removing tool subcommand nesting
+
+### Miscellaneous
+
+- *(dev)* Move provision script to standalone
+- *(dev)* Split tests task
+## [0.2.0] - 2026-03-16
 
 ### Added
 
-- `complete` MCP tool — mark a task as done
-- `claim` MCP tool — claim a task by moving it to In Progress
-- `comment` MCP tool — add a comment to a task
-- `get_task` MCP tool — get full task details by ID
-- `list_in_progress` MCP tool — list tasks currently being worked on
-- `list_done` MCP tool — list completed tasks
-- `create_task` MCP tool — create a new task with title and optional description
-- `list_ready` MCP tool — list tasks in the Todo bucket
-- MCP stdio server (run with `vein serve` or just `vein`)
-- `vein list-projects`, `vein list-project-views`, `vein list-project-view-buckets`
-- `vein init` — interactive setup
-- `just dev` — dev Vikunja via process-compose
+- *(config)* Add configuration module for Vikunja env vars
+- *(client)* Add Vikunja REST API client with trait abstraction
+- *(server)* Add MCP stdio server transport using rmcp
+- *(cli)* Add clap CLI framework with init and serve subcommands
+- *(client)* Add list_projects to VikunjaClient
+- *(cli)* Add list-projects subcommand
+- *(cli)* Add list-project-views subcommand
+- *(cli)* Add list-project-view-buckets subcommand
+- *(init)* Interactive project/bucket setup with dialoguer
+- *(dev)* Add process-compose dev environment with auto-provisioning
+- *(test)* Add MCP server integration test harness
+- *(tools)* Add list_ready MCP tool and CLI subcommand
+- *(tools)* Add create_task MCP tool and CLI subcommand
+- *(tools)* Add list_in_progress and list_done MCP tools
+- *(tools)* Add get_task MCP tool and CLI subcommand
+- *(tools)* Add comment MCP tool and CLI subcommand
+- *(tools)* Add claim MCP tool and CLI subcommand
+- *(tools)* Add complete MCP tool and CLI subcommand
+- *(tools)* Add add_relation MCP tool and CLI subcommand
+- *(tools)* Add update_task MCP tool and CLI subcommand
+- *(tools)* Add list_tasks MCP tool and CLI subcommand
+
+### Fixed
+
+- *(init)* Default selector to first item
+- *(nix)* Provide SSL certs for nix build sandbox
+- *(test)* Use unique project names and match buckets by title
+
+### Changed
+
+- *(config)* Split into ConnectionConfig and ProjectConfig
+
+### Documentation
+
+- Document required API token permissions and user setup
+
+### Miscellaneous
+
+- *(beans)* Scrap agent identity tracking, simplify claim tool
+- *(beans)* Mark vein-rnzz epic completed

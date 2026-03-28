@@ -12,7 +12,7 @@
 - lints pass
 - you've checked any updated capabilities using `cargo run -- tool <name>`
 - nix build passes (background recommended)
-- changelog updated
+- changelog updated (`just changelog` to preview, git-cliff generates CHANGELOG.md during release)
 - code committed with all ticket changes included
 - stop and ask for approval
 - ticket marked done
