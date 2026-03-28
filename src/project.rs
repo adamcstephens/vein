@@ -448,9 +448,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolve_hash_numeric_id() {
-        let pc = ProjectClient::new(MockClient::new(vec![make_task(42, "Test")]), test_config());
-        assert_eq!(pc.resolve("#42").await.unwrap(), 42);
+    async fn resolve_hash_numeric_by_index() {
+        let mut task = make_task(42, "Test");
+        task.index = 7;
+        let pc = ProjectClient::new(MockClient::new(vec![task]), test_config());
+        assert_eq!(pc.resolve("#7").await.unwrap(), 42);
     }
 
     #[tokio::test]

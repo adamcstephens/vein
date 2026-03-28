@@ -503,3 +503,66 @@ async fn task_identifier_resolves_to_correct_task() {
     assert_eq!(fetched.title, "Second task");
     assert_eq!(fetched.identifier, format!("{ident}-2"));
 }
+
+#[tokio::test]
+async fn hash_ref_resolves_by_project_index_not_global_id() {
+    let client = vikunja_client();
+
+    // Create two projects — tasks in each get independent index sequences
+    // but share a global auto-increment ID space.
+    let project_a = TestProject::create(client)
+        .await
+        .expect("failed to create project A");
+    let project_b = TestProject::create(vikunja_client())
+        .await
+        .expect("failed to create project B");
+
+    let pc_a = ProjectClient::new(vikunja_client(), project_a.config.clone());
+    let pc_b = ProjectClient::new(vikunja_client(), project_b.config.clone());
+
+    // Create a task in project A (gets index 1, some global ID)
+    let task_a = pc_a
+        .create_task("Task in project A", None, None)
+        .await
+        .expect("failed to create task in project A");
+
+    // Create a task in project B (also gets index 1, different global ID)
+    let task_b = pc_b
+        .create_task("Task in project B", None, None)
+        .await
+        .expect("failed to create task in project B");
+
+    // Both should have index 1 within their respective projects
+    assert_eq!(task_a.index, 1, "project A task should have index 1");
+    assert_eq!(task_b.index, 1, "project B task should have index 1");
+
+    // Global IDs must differ (they share the same ID sequence)
+    assert_ne!(
+        task_a.id, task_b.id,
+        "tasks in different projects should have different global IDs"
+    );
+
+    // Resolving "#1" in project B should find project B's task, not project A's
+    let resolved = pc_b
+        .resolve("#1")
+        .await
+        .expect("failed to resolve #1 in project B");
+
+    assert_eq!(
+        resolved, task_b.id,
+        "#1 in project B should resolve to project B's task (global ID {}), not project A's (global ID {})",
+        task_b.id, task_a.id
+    );
+
+    // Claiming "#1" in project B should claim project B's task
+    let claimed = pc_b
+        .claim("#1")
+        .await
+        .expect("failed to claim #1 in project B");
+
+    assert_eq!(
+        claimed.id, task_b.id,
+        "claiming #1 in project B should claim project B's task"
+    );
+    assert_eq!(claimed.title, "Task in project B");
+}

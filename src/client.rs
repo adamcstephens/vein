@@ -53,10 +53,12 @@ pub struct Task {
 impl Task {
     /// Returns the human-friendly display ID (e.g. "VEIN-3") if available, else "#42".
     pub fn display_id(&self) -> String {
-        if self.identifier.is_empty() {
-            format!("#{}", self.id)
-        } else {
+        if !self.identifier.is_empty() {
             self.identifier.clone()
+        } else if self.index > 0 {
+            format!("#{}", self.index)
+        } else {
+            format!("#{}", self.id)
         }
     }
 }
@@ -194,17 +196,23 @@ pub trait VikunjaClient {
 #[derive(Debug, Clone, PartialEq)]
 pub enum TaskRef {
     Id(i64),
+    Index(i64),
     Identifier { prefix: String, index: i64 },
 }
 
 impl TaskRef {
     /// Parse a task reference string. Accepts "VEIN-3" style identifiers or plain numeric IDs.
     pub fn parse(s: &str) -> Result<Self, String> {
-        let s = s.trim().trim_start_matches('#');
-        if let Ok(id) = s.parse::<i64>() {
+        let trimmed = s.trim();
+        if let Some(after_hash) = trimmed.strip_prefix('#')
+            && let Ok(index) = after_hash.parse::<i64>()
+        {
+            return Ok(TaskRef::Index(index));
+        }
+        if let Ok(id) = trimmed.parse::<i64>() {
             return Ok(TaskRef::Id(id));
         }
-        if let Some((prefix, index_str)) = s.rsplit_once('-')
+        if let Some((prefix, index_str)) = trimmed.rsplit_once('-')
             && let Ok(index) = index_str.parse::<i64>()
             && !prefix.is_empty()
         {
@@ -214,7 +222,7 @@ impl TaskRef {
             });
         }
         Err(format!(
-            "Invalid task reference '{s}'. Use a numeric ID (42) or identifier (VEIN-3)."
+            "Invalid task reference '{trimmed}'. Use a numeric ID (42), #index (#3), or identifier (VEIN-3)."
         ))
     }
 }
@@ -227,7 +235,7 @@ pub async fn resolve_task_ref(
 ) -> Result<i64, ClientError> {
     match task_ref {
         TaskRef::Id(id) => Ok(*id),
-        TaskRef::Identifier { index, .. } => {
+        TaskRef::Index(index) | TaskRef::Identifier { index, .. } => {
             let tasks = client
                 .list_project_tasks(project_id, &format!("index = {index}"))
                 .await?;
@@ -942,8 +950,8 @@ mod tests {
     }
 
     #[test]
-    fn task_ref_parses_hash_numeric_id() {
-        assert_eq!(TaskRef::parse("#42"), Ok(TaskRef::Id(42)));
+    fn task_ref_parses_hash_numeric_as_index() {
+        assert_eq!(TaskRef::parse("#42"), Ok(TaskRef::Index(42)));
     }
 
     #[test]
@@ -975,8 +983,15 @@ mod tests {
     }
 
     #[test]
-    fn display_id_falls_back_to_hash_id() {
-        let task = make_task();
+    fn display_id_uses_index_when_no_identifier() {
+        let mut task = make_task();
+        task.index = 5;
+        assert_eq!(task.display_id(), "#5");
+    }
+
+    #[test]
+    fn display_id_falls_back_to_hash_id_when_no_index() {
+        let task = make_task(); // index = 0
         assert_eq!(task.display_id(), "#1");
     }
 
