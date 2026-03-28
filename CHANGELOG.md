@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 
 - `#N` task references now resolve by project index instead of global Vikunja ID
 - `display_id` uses project index when available, matching how identifiers work
-- `list_bucket_tasks` now correctly deserializes bucket-wrapped API responses
+- `list_bucket_tasks` filters by bucket client-side instead of using invalid Vikunja filter
 
 ## [0.3.0] - 2026-03-21
 

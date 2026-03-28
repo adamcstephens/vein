@@ -463,7 +463,6 @@ impl VikunjaClient for ReqwestClient {
             .http
             .get(self.url(&format!("/projects/{project_id}/views/{view_id}/tasks")))
             .query(&[
-                ("filter", format!("bucket_id = {bucket_id}")),
                 ("sort_by", "position".to_string()),
                 ("order_by", "asc".to_string()),
             ])
@@ -472,10 +471,20 @@ impl VikunjaClient for ReqwestClient {
         let resp = Self::check_response(resp).await?;
 
         // Vikunja returns Vec<Bucket> where each bucket contains a tasks array.
-        // We flatten these into a single Vec<Task>, setting bucket_id from the
-        // containing bucket.
+        // Filter to the target bucket and extract its tasks, setting bucket_id
+        // from the containing bucket.
         let buckets: Vec<Bucket> = resp.json().await?;
-        Ok(flatten_buckets(buckets))
+        Ok(buckets
+            .into_iter()
+            .filter(|b| b.id == bucket_id)
+            .flat_map(|bucket| {
+                let bid = bucket.id;
+                bucket.tasks.into_iter().map(move |mut task| {
+                    task.bucket_id = bid;
+                    task
+                })
+            })
+            .collect())
     }
 
     async fn list_view_tasks(
