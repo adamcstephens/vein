@@ -3,6 +3,7 @@ use clap_complete::Shell;
 
 #[derive(Parser, Debug)]
 #[command(name = "vein", about = "Agent-focused issue tracker backed by Vikunja")]
+#[command(subcommand_required = true, arg_required_else_help = true)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Option<Command>,
@@ -26,7 +27,7 @@ pub enum Command {
         /// View ID
         view_id: i64,
     },
-    /// Run as MCP stdio server (default if no subcommand given)
+    /// Run as MCP stdio server
     Serve,
     /// Generate shell completion script
     Completions {
@@ -375,8 +376,9 @@ mod tests {
     }
 
     #[test]
-    fn defaults_to_none_when_no_subcommand() {
-        let cli = Cli::parse_from(["vein"]);
-        assert!(cli.command.is_none());
+    fn no_subcommand_prints_help() {
+        // With subcommand_required, parsing with no args should fail (prints help)
+        let result = Cli::try_parse_from(["vein"]);
+        assert!(result.is_err());
     }
 }

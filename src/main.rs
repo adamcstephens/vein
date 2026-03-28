@@ -176,7 +176,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Ok(())
         }
-        Some(Command::Serve) | None => {
+        Some(Command::Serve) => {
             let conn_config = ConnectionConfig::from_env()?;
             let project_config = ProjectConfig::from_env()?;
             let client = ReqwestClient::new(&conn_config)?;
@@ -185,5 +185,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             service.waiting().await?;
             Ok(())
         }
+        None => unreachable!("clap enforces subcommand_required"),
     }
 }

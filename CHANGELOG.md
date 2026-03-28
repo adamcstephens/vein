@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - List commands return tasks ordered by column position (matching Kanban board order)
 
+### Changed
+
+- Running `vein` with no arguments now prints help instead of starting the MCP server
+
 ### Fixed
 
 - `#N` task references now resolve by project index instead of global Vikunja ID
