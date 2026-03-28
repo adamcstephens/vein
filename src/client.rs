@@ -40,6 +40,8 @@ pub struct Task {
     pub project_id: i64,
     pub bucket_id: i64,
     pub priority: i64,
+    #[serde(default)]
+    pub position: f64,
     #[serde(default, deserialize_with = "deserialize_null_default")]
     pub labels: Vec<Label>,
     #[serde(default, deserialize_with = "deserialize_null_default")]
@@ -272,6 +274,21 @@ impl From<reqwest::Error> for ClientError {
     }
 }
 
+// --- Helpers ---
+
+fn flatten_buckets(buckets: Vec<Bucket>) -> Vec<Task> {
+    buckets
+        .into_iter()
+        .flat_map(|bucket| {
+            let bucket_id = bucket.id;
+            bucket.tasks.into_iter().map(move |mut task| {
+                task.bucket_id = bucket_id;
+                task
+            })
+        })
+        .collect()
+}
+
 // --- ReqwestClient ---
 
 #[derive(Debug, Clone)]
@@ -437,11 +454,20 @@ impl VikunjaClient for ReqwestClient {
         let resp = self
             .http
             .get(self.url(&format!("/projects/{project_id}/views/{view_id}/tasks")))
-            .query(&[("filter", format!("bucket_id = {bucket_id}"))])
+            .query(&[
+                ("filter", format!("bucket_id = {bucket_id}")),
+                ("sort_by", "position".to_string()),
+                ("order_by", "asc".to_string()),
+            ])
             .send()
             .await?;
         let resp = Self::check_response(resp).await?;
-        Ok(resp.json().await?)
+
+        // Vikunja returns Vec<Bucket> where each bucket contains a tasks array.
+        // We flatten these into a single Vec<Task>, setting bucket_id from the
+        // containing bucket.
+        let buckets: Vec<Bucket> = resp.json().await?;
+        Ok(flatten_buckets(buckets))
     }
 
     async fn list_view_tasks(
@@ -451,7 +477,10 @@ impl VikunjaClient for ReqwestClient {
         filter: Option<&str>,
         search: Option<&str>,
     ) -> Result<Vec<Task>, ClientError> {
-        let mut query: Vec<(&str, String)> = Vec::new();
+        let mut query: Vec<(&str, String)> = vec![
+            ("sort_by", "position".to_string()),
+            ("order_by", "asc".to_string()),
+        ];
         if let Some(f) = filter {
             query.push(("filter", f.to_string()));
         }
@@ -470,16 +499,7 @@ impl VikunjaClient for ReqwestClient {
         // We flatten these into a single Vec<Task>, setting bucket_id from the
         // containing bucket.
         let buckets: Vec<Bucket> = resp.json().await?;
-        Ok(buckets
-            .into_iter()
-            .flat_map(|bucket| {
-                let bucket_id = bucket.id;
-                bucket.tasks.into_iter().map(move |mut task| {
-                    task.bucket_id = bucket_id;
-                    task
-                })
-            })
-            .collect())
+        Ok(flatten_buckets(buckets))
     }
 
     async fn create_task(
@@ -909,6 +929,7 @@ mod tests {
             project_id: 1,
             bucket_id: 10,
             priority: 3,
+            position: 0.0,
             labels: vec![],
             assignees: vec![],
             related_tasks: HashMap::new(),
@@ -987,6 +1008,23 @@ mod tests {
         assert_eq!(payload.description, "New description");
         assert!(payload.done);
         assert_eq!(payload.priority, 1);
+    }
+
+    #[test]
+    fn task_deserializes_position_from_json() {
+        let json = r#"{
+            "id": 1,
+            "title": "Positioned",
+            "description": "",
+            "done": false,
+            "project_id": 1,
+            "bucket_id": 2,
+            "priority": 0,
+            "position": 42.5
+        }"#;
+
+        let task: Task = serde_json::from_str(json).unwrap();
+        assert!((task.position - 42.5).abs() < f64::EPSILON);
     }
 
     #[test]

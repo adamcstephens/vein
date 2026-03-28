@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- List commands return tasks ordered by column position (matching Kanban board order)
+
+### Fixed
+
+- `list_bucket_tasks` now correctly deserializes bucket-wrapped API responses
+
 ## [0.3.0] - 2026-03-21
 
 ### Changed

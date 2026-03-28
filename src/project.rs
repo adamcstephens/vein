@@ -165,29 +165,37 @@ impl<C: VikunjaClient> ProjectClient<C> {
                 self.config.todo_bucket_id,
             )
             .await?;
-        Ok(tasks.into_iter().filter(|t| !is_blocked(t)).collect())
+        let mut tasks: Vec<Task> = tasks.into_iter().filter(|t| !is_blocked(t)).collect();
+        sort_by_position(&mut tasks);
+        Ok(tasks)
     }
 
     /// List tasks currently in progress.
     pub async fn list_in_progress(&self) -> Result<Vec<Task>, ClientError> {
-        self.client
+        let mut tasks = self
+            .client
             .list_bucket_tasks(
                 self.config.project_id,
                 self.config.view_id,
                 self.config.inprogress_bucket_id,
             )
-            .await
+            .await?;
+        sort_by_position(&mut tasks);
+        Ok(tasks)
     }
 
     /// List completed tasks.
     pub async fn list_done(&self) -> Result<Vec<Task>, ClientError> {
-        self.client
+        let mut tasks = self
+            .client
             .list_bucket_tasks(
                 self.config.project_id,
                 self.config.view_id,
                 self.config.done_bucket_id,
             )
-            .await
+            .await?;
+        sort_by_position(&mut tasks);
+        Ok(tasks)
     }
 
     /// List/search tasks across all buckets.
@@ -196,10 +204,21 @@ impl<C: VikunjaClient> ProjectClient<C> {
         filter: Option<&str>,
         search: Option<&str>,
     ) -> Result<Vec<Task>, ClientError> {
-        self.client
+        let mut tasks = self
+            .client
             .list_view_tasks(self.config.project_id, self.config.view_id, filter, search)
-            .await
+            .await?;
+        sort_by_position(&mut tasks);
+        Ok(tasks)
     }
+}
+
+fn sort_by_position(tasks: &mut [Task]) {
+    tasks.sort_by(|a, b| {
+        a.position
+            .partial_cmp(&b.position)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 }
 
 pub fn is_blocked(task: &Task) -> bool {
@@ -236,6 +255,7 @@ mod tests {
             project_id: 1,
             bucket_id: 100,
             priority: 0,
+            position: 0.0,
             labels: vec![],
             assignees: vec![],
             related_tasks: HashMap::new(),
@@ -518,6 +538,68 @@ mod tests {
         let tasks = pc.list_ready().await.unwrap();
         assert_eq!(tasks.len(), 1);
         assert_eq!(tasks[0].title, "Ready");
+    }
+
+    #[tokio::test]
+    async fn list_ready_returns_tasks_ordered_by_position() {
+        let mut t1 = make_task(1, "Third");
+        t1.position = 30.0;
+        let mut t2 = make_task(2, "First");
+        t2.position = 10.0;
+        let mut t3 = make_task(3, "Second");
+        t3.position = 20.0;
+
+        let pc = ProjectClient::new(MockClient::new(vec![t1, t2, t3]), test_config());
+        let tasks = pc.list_ready().await.unwrap();
+        assert_eq!(tasks[0].title, "First");
+        assert_eq!(tasks[1].title, "Second");
+        assert_eq!(tasks[2].title, "Third");
+    }
+
+    #[tokio::test]
+    async fn list_in_progress_returns_tasks_ordered_by_position() {
+        let mut t1 = make_task(1, "Second");
+        t1.bucket_id = 200;
+        t1.position = 20.0;
+        let mut t2 = make_task(2, "First");
+        t2.bucket_id = 200;
+        t2.position = 10.0;
+
+        let pc = ProjectClient::new(MockClient::new(vec![t1, t2]), test_config());
+        let tasks = pc.list_in_progress().await.unwrap();
+        assert_eq!(tasks[0].title, "First");
+        assert_eq!(tasks[1].title, "Second");
+    }
+
+    #[tokio::test]
+    async fn list_done_returns_tasks_ordered_by_position() {
+        let mut t1 = make_task(1, "Second");
+        t1.bucket_id = 300;
+        t1.position = 5.0;
+        let mut t2 = make_task(2, "First");
+        t2.bucket_id = 300;
+        t2.position = 1.0;
+
+        let pc = ProjectClient::new(MockClient::new(vec![t1, t2]), test_config());
+        let tasks = pc.list_done().await.unwrap();
+        assert_eq!(tasks[0].title, "First");
+        assert_eq!(tasks[1].title, "Second");
+    }
+
+    #[tokio::test]
+    async fn list_tasks_returns_tasks_ordered_by_position() {
+        let mut t1 = make_task(1, "Third");
+        t1.position = 30.0;
+        let mut t2 = make_task(2, "First");
+        t2.position = 10.0;
+        let mut t3 = make_task(3, "Second");
+        t3.position = 20.0;
+
+        let pc = ProjectClient::new(MockClient::new(vec![t1, t2, t3]), test_config());
+        let tasks = pc.list_tasks(None, None).await.unwrap();
+        assert_eq!(tasks[0].title, "First");
+        assert_eq!(tasks[1].title, "Second");
+        assert_eq!(tasks[2].title, "Third");
     }
 
     #[tokio::test]

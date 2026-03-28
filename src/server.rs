@@ -172,6 +172,7 @@ You are connected to a Vikunja-backed issue tracker. Use the tools below to mana
 3. **When done**: Use `complete` to mark the task finished. Add a final `comment` summarizing what was done.
 4. **Task descriptions**: Use `update_task` to rewrite the description when the plan changes. Use `comment` for incremental progress notes.
 5. **Labels** Use labels for bugs, features, tests, ci, etc, including existing project labels.
+6. **Relations** Add relations between related tickets, ensuring dependent tasks are properly blocked.
 
 ## Current State
 
@@ -530,6 +531,7 @@ mod tests {
             project_id: 1,
             bucket_id: 2,
             priority,
+            position: 0.0,
             labels: labels
                 .into_iter()
                 .enumerate()
@@ -589,6 +591,7 @@ mod tests {
                 project_id: 1,
                 bucket_id: 2,
                 priority: 0,
+                position: 0.0,
                 labels: vec![],
                 assignees: vec![],
                 related_tasks: HashMap::new(),
