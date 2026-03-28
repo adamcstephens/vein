@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- `#N` task references now resolve by project index instead of global Vikunja ID
+- All task references (`3`, `#3`, `VEIN-3`) resolve by project index — no global ID exposure
 - `display_id` uses project index when available, matching how identifiers work
 - `list_bucket_tasks` filters by bucket client-side instead of using invalid Vikunja filter
 

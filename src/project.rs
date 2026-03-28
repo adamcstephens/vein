@@ -248,7 +248,7 @@ mod tests {
         Task {
             id,
             identifier: String::new(),
-            index: 0,
+            index: id,
             title: title.to_string(),
             description: String::new(),
             done: false,
@@ -442,17 +442,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolve_numeric_id() {
-        let pc = ProjectClient::new(MockClient::new(vec![make_task(42, "Test")]), test_config());
-        assert_eq!(pc.resolve("42").await.unwrap(), 42);
+    async fn resolve_bare_numeric_by_index() {
+        let mut task = make_task(99, "Test");
+        task.index = 7;
+        let pc = ProjectClient::new(MockClient::new(vec![task]), test_config());
+        assert_eq!(pc.resolve("7").await.unwrap(), 99);
     }
 
     #[tokio::test]
     async fn resolve_hash_numeric_by_index() {
-        let mut task = make_task(42, "Test");
+        let mut task = make_task(99, "Test");
         task.index = 7;
         let pc = ProjectClient::new(MockClient::new(vec![task]), test_config());
-        assert_eq!(pc.resolve("#7").await.unwrap(), 42);
+        assert_eq!(pc.resolve("#7").await.unwrap(), 99);
     }
 
     #[tokio::test]

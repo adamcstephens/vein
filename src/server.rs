@@ -58,7 +58,7 @@ pub struct ListTasksParams {
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct TaskIdParams {
     #[schemars(
-        description = "Task identifier (e.g. \"VEIN-3\"), index (e.g. \"#3\"), or numeric ID (e.g. \"42\")"
+        description = "Task index (e.g. \"3\" or \"#3\") or identifier (e.g. \"VEIN-3\")"
     )]
     pub task_id: String,
 }
@@ -66,7 +66,7 @@ pub struct TaskIdParams {
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct CommentParams {
     #[schemars(
-        description = "Task identifier (e.g. \"VEIN-3\"), index (e.g. \"#3\"), or numeric ID (e.g. \"42\")"
+        description = "Task index (e.g. \"3\" or \"#3\") or identifier (e.g. \"VEIN-3\")"
     )]
     pub task_id: String,
     #[schemars(description = "Comment text")]
@@ -76,7 +76,7 @@ pub struct CommentParams {
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct UpdateTaskParams {
     #[schemars(
-        description = "Task identifier (e.g. \"VEIN-3\"), index (e.g. \"#3\"), or numeric ID (e.g. \"42\")"
+        description = "Task index (e.g. \"3\" or \"#3\") or identifier (e.g. \"VEIN-3\")"
     )]
     pub task_id: String,
     #[schemars(description = "New title (optional)")]
@@ -96,7 +96,7 @@ pub struct CreateLabelParams {
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct AddLabelParams {
     #[schemars(
-        description = "Task identifier (e.g. \"VEIN-3\"), index (e.g. \"#3\"), or numeric ID (e.g. \"42\")"
+        description = "Task index (e.g. \"3\" or \"#3\") or identifier (e.g. \"VEIN-3\")"
     )]
     pub task_id: String,
     #[schemars(description = "Label ID to assign")]
@@ -106,7 +106,7 @@ pub struct AddLabelParams {
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct AddRelationParams {
     #[schemars(
-        description = "Task identifier (e.g. \"VEIN-3\"), index (e.g. \"#3\"), or numeric ID (e.g. \"42\")"
+        description = "Task index (e.g. \"3\" or \"#3\") or identifier (e.g. \"VEIN-3\")"
     )]
     pub task_id: String,
     #[schemars(

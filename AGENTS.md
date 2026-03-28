@@ -13,8 +13,9 @@
 - you've checked any updated capabilities using `cargo run -- tool <name>`
 - nix build passes (background recommended)
 - changelog updated
-- ticket marked done
 - code committed with all ticket changes included
+- stop and ask for approval
+- ticket marked done
 
 ## Code style
 - No `unwrap()` outside of tests — propagate with `?` or `ok_or_else`

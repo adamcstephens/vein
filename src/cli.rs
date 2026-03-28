@@ -45,9 +45,9 @@ pub enum Command {
         #[arg(short, long)]
         search: Option<String>,
     },
-    /// Get full details of a task by identifier (e.g. VEIN-3), index (e.g. #3), or numeric ID
+    /// Get full details of a task by index (e.g. 3 or #3) or identifier (e.g. VEIN-3)
     GetTask {
-        /// Task identifier (e.g. VEIN-3), index (e.g. #3), or numeric ID
+        /// Task index (e.g. 3 or #3) or identifier (e.g. VEIN-3)
         task_id: String,
     },
     /// List tasks currently in progress
@@ -56,24 +56,24 @@ pub enum Command {
     ListDone,
     /// Claim a task (move to In Progress)
     Claim {
-        /// Task identifier (e.g. VEIN-3), index (e.g. #3), or numeric ID
+        /// Task index (e.g. 3 or #3) or identifier (e.g. VEIN-3)
         task_id: String,
     },
     /// Mark a task as done
     Complete {
-        /// Task identifier (e.g. VEIN-3), index (e.g. #3), or numeric ID
+        /// Task index (e.g. 3 or #3) or identifier (e.g. VEIN-3)
         task_id: String,
     },
     /// Add a comment to a task
     Comment {
-        /// Task identifier (e.g. VEIN-3), index (e.g. #3), or numeric ID
+        /// Task index (e.g. 3 or #3) or identifier (e.g. VEIN-3)
         task_id: String,
         /// Comment text
         comment: String,
     },
     /// Update an existing task's title, description, or priority
     UpdateTask {
-        /// Task identifier (e.g. VEIN-3), index (e.g. #3), or numeric ID
+        /// Task index (e.g. 3 or #3) or identifier (e.g. VEIN-3)
         task_id: String,
         /// New title
         #[arg(short, long)]
@@ -92,7 +92,7 @@ pub enum Command {
     },
     /// Add a label to a task
     AddLabel {
-        /// Task identifier (e.g. VEIN-3), index (e.g. #3), or numeric ID
+        /// Task index (e.g. 3 or #3) or identifier (e.g. VEIN-3)
         task_id: String,
         /// Label ID
         label_id: i64,
@@ -101,7 +101,7 @@ pub enum Command {
     ListLabels,
     /// Add a relation between two tasks
     AddRelation {
-        /// Task identifier (e.g. VEIN-3), index (e.g. #3), or numeric ID
+        /// Task index (e.g. 3 or #3) or identifier (e.g. VEIN-3)
         task_id: String,
         /// Other task identifier (e.g. VEIN-3) or numeric ID
         other_task_id: String,

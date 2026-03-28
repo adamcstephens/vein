@@ -195,7 +195,6 @@ pub trait VikunjaClient {
 /// Parsed task reference: either a numeric ID or a project identifier like "VEIN-3".
 #[derive(Debug, Clone, PartialEq)]
 pub enum TaskRef {
-    Id(i64),
     Index(i64),
     Identifier { prefix: String, index: i64 },
 }
@@ -203,14 +202,9 @@ pub enum TaskRef {
 impl TaskRef {
     /// Parse a task reference string. Accepts "VEIN-3" style identifiers or plain numeric IDs.
     pub fn parse(s: &str) -> Result<Self, String> {
-        let trimmed = s.trim();
-        if let Some(after_hash) = trimmed.strip_prefix('#')
-            && let Ok(index) = after_hash.parse::<i64>()
-        {
+        let trimmed = s.trim().trim_start_matches('#');
+        if let Ok(index) = trimmed.parse::<i64>() {
             return Ok(TaskRef::Index(index));
-        }
-        if let Ok(id) = trimmed.parse::<i64>() {
-            return Ok(TaskRef::Id(id));
         }
         if let Some((prefix, index_str)) = trimmed.rsplit_once('-')
             && let Ok(index) = index_str.parse::<i64>()
@@ -222,7 +216,7 @@ impl TaskRef {
             });
         }
         Err(format!(
-            "Invalid task reference '{trimmed}'. Use a numeric ID (42), #index (#3), or identifier (VEIN-3)."
+            "Invalid task reference '{trimmed}'. Use an index (3 or #3) or identifier (VEIN-3)."
         ))
     }
 }
@@ -233,18 +227,16 @@ pub async fn resolve_task_ref(
     project_id: i64,
     task_ref: &TaskRef,
 ) -> Result<i64, ClientError> {
-    match task_ref {
-        TaskRef::Id(id) => Ok(*id),
-        TaskRef::Index(index) | TaskRef::Identifier { index, .. } => {
-            let tasks = client
-                .list_project_tasks(project_id, &format!("index = {index}"))
-                .await?;
-            tasks.first().map(|t| t.id).ok_or_else(|| ClientError::Api {
-                status: 404,
-                message: format!("no task found with index {index}"),
-            })
-        }
-    }
+    let index = match task_ref {
+        TaskRef::Index(index) | TaskRef::Identifier { index, .. } => index,
+    };
+    let tasks = client
+        .list_project_tasks(project_id, &format!("index = {index}"))
+        .await?;
+    tasks.first().map(|t| t.id).ok_or_else(|| ClientError::Api {
+        status: 404,
+        message: format!("no task found with index {index}"),
+    })
 }
 
 // --- Update payload ---
@@ -954,8 +946,8 @@ mod tests {
     }
 
     #[test]
-    fn task_ref_parses_numeric_id() {
-        assert_eq!(TaskRef::parse("42"), Ok(TaskRef::Id(42)));
+    fn task_ref_parses_bare_numeric_as_index() {
+        assert_eq!(TaskRef::parse("42"), Ok(TaskRef::Index(42)));
     }
 
     #[test]
