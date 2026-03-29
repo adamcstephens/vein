@@ -1,12 +1,13 @@
 # Changelog
 
 All notable changes to this project will be documented in this file.
-## [unreleased]
+## [0.4.0] - 2026-03-29
 
 ### Added
 
 - Order list results by column position
 - Print help when invoked with no arguments
+- Adopt git-cliff for changelog generation
 
 ### Fixed
 
