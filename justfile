@@ -32,5 +32,5 @@ release version:
     sed -i 's/^version = ".*"/version = "{{ version }}"/' Cargo.toml
     cargo generate-lockfile --offline
     jj commit --message "release: {{ version }}" Cargo.* CHANGELOG.md
-    jj tag set "v{{ version }}" --revision @-
+    git tag --sign --annotate "v{{ version }}" --message "release {{ version }}"
     jj bookmark move main --to @-
