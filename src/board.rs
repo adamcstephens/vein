@@ -1,7 +1,7 @@
 use std::io;
 use std::time::{Duration, Instant};
 
-use crossterm::event::{self, Event, KeyCode, KeyEventKind};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
@@ -13,16 +13,105 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use tokio::sync::mpsc;
 
-use crate::client::{Task, VikunjaClient};
+use crate::client::{Label, Task, VikunjaClient};
 use crate::project::{BoardState, ProjectClient};
 use crate::server::format_task_detail;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
+const PRIORITY_NAMES: &[&str] = &["None", "Low", "Medium", "High", "Urgent"];
+
 enum Mode {
     Board,
     Detail,
     CreateTask,
+    ConfirmDiscard,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum FormField {
+    Title,
+    Description,
+    Priority,
+    Labels,
+}
+
+const FORM_FIELDS: &[FormField] = &[
+    FormField::Title,
+    FormField::Description,
+    FormField::Priority,
+    FormField::Labels,
+];
+
+struct CreateForm {
+    title: String,
+    description: String,
+    priority: usize, // index into PRIORITY_NAMES
+    available_labels: Vec<Label>,
+    selected_labels: Vec<bool>,
+    active_field: FormField,
+    label_cursor: usize,
+}
+
+impl CreateForm {
+    fn new(labels: Vec<Label>) -> Self {
+        let label_count = labels.len();
+        CreateForm {
+            title: String::new(),
+            description: String::new(),
+            priority: 0,
+            available_labels: labels,
+            selected_labels: vec![false; label_count],
+            active_field: FormField::Title,
+            label_cursor: 0,
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.title.is_empty()
+            && self.description.is_empty()
+            && self.priority == 0
+            && self.selected_labels.iter().all(|&s| !s)
+    }
+
+    fn next_field(&mut self) {
+        let idx = FORM_FIELDS
+            .iter()
+            .position(|f| *f == self.active_field)
+            .unwrap_or(0);
+        let next = (idx + 1) % FORM_FIELDS.len();
+        self.active_field = FORM_FIELDS[next];
+    }
+
+    fn prev_field(&mut self) {
+        let idx = FORM_FIELDS
+            .iter()
+            .position(|f| *f == self.active_field)
+            .unwrap_or(0);
+        let prev = if idx == 0 {
+            FORM_FIELDS.len() - 1
+        } else {
+            idx - 1
+        };
+        self.active_field = FORM_FIELDS[prev];
+    }
+
+    fn priority_value(&self) -> Option<i64> {
+        if self.priority == 0 {
+            None
+        } else {
+            Some(self.priority as i64)
+        }
+    }
+
+    fn selected_label_ids(&self) -> Vec<i64> {
+        self.available_labels
+            .iter()
+            .zip(self.selected_labels.iter())
+            .filter(|&(_, &selected)| selected)
+            .map(|(label, _)| label.id)
+            .collect()
+    }
 }
 
 struct App {
@@ -34,7 +123,7 @@ struct App {
     detail_task: Option<Task>,
     detail_scroll: u16,
     mode: Mode,
-    create_input: String,
+    create_form: Option<CreateForm>,
 }
 
 impl App {
@@ -56,7 +145,7 @@ impl App {
             detail_task: None,
             detail_scroll: 0,
             mode: Mode::Board,
-            create_input: String::new(),
+            create_form: None,
         }
     }
 
@@ -144,14 +233,24 @@ impl App {
         self.mode = Mode::Board;
     }
 
-    fn start_create(&mut self) {
-        self.create_input.clear();
+    fn start_create(&mut self, labels: Vec<Label>) {
+        self.create_form = Some(CreateForm::new(labels));
         self.mode = Mode::CreateTask;
     }
 
     fn cancel_create(&mut self) {
-        self.create_input.clear();
+        self.create_form = None;
         self.mode = Mode::Board;
+    }
+
+    fn try_cancel_create(&mut self) {
+        if let Some(form) = &self.create_form {
+            if form.is_empty() {
+                self.cancel_create();
+            } else {
+                self.mode = Mode::ConfirmDiscard;
+            }
+        }
     }
 }
 
@@ -277,24 +376,139 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
         frame.render_widget(paragraph, popup_area);
     }
 
-    // Create task input overlay
-    if matches!(app.mode, Mode::CreateTask) {
-        let area = frame.area();
-        let popup_width = (area.width * 2 / 3).max(30).min(area.width);
-        let popup_height = 3;
-        let x = (area.width.saturating_sub(popup_width)) / 2;
-        let y = (area.height.saturating_sub(popup_height)) / 2;
-        let popup_area = ratatui::layout::Rect::new(x, y, popup_width, popup_height);
+    // Create task form overlay
+    if matches!(app.mode, Mode::CreateTask | Mode::ConfirmDiscard)
+        && let Some(form) = &app.create_form
+    {
+        draw_create_form(frame, form, matches!(app.mode, Mode::ConfirmDiscard));
+    }
+}
 
-        let block = Block::default()
-            .title("New Task Title (Enter to create, Esc to cancel)")
+fn draw_create_form(frame: &mut ratatui::Frame, form: &CreateForm, confirming: bool) {
+    let area = frame.area();
+    let popup_width = (area.width * 4 / 5).max(50).min(area.width);
+    let popup_height = (area.height * 4 / 5).max(16).min(area.height);
+    let x = (area.width.saturating_sub(popup_width)) / 2;
+    let y = (area.height.saturating_sub(popup_height)) / 2;
+    let popup_area = ratatui::layout::Rect::new(x, y, popup_width, popup_height);
+
+    frame.render_widget(Clear, popup_area);
+
+    let outer_block = Block::default()
+        .title("New Task (Ctrl+S: save, Esc: cancel, Tab: next field)")
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Green));
+    let inner = outer_block.inner(popup_area);
+    frame.render_widget(outer_block, popup_area);
+
+    // Calculate label rows needed
+    let label_rows = form.available_labels.len().max(1) as u16;
+    let desc_min = 3u16;
+
+    let field_layout = Layout::vertical([
+        Constraint::Length(3),                     // Title
+        Constraint::Min(desc_min),                 // Description
+        Constraint::Length(3),                     // Priority
+        Constraint::Length(label_rows.min(6) + 2), // Labels
+    ])
+    .split(inner);
+
+    // Title field
+    let title_style = field_border_style(form.active_field == FormField::Title);
+    let title_block = Block::default()
+        .title("Title")
+        .borders(Borders::ALL)
+        .border_style(title_style);
+    let title_text = if form.active_field == FormField::Title {
+        format!("{}\u{2588}", form.title)
+    } else {
+        form.title.clone()
+    };
+    let title_widget = Paragraph::new(title_text).block(title_block);
+    frame.render_widget(title_widget, field_layout[0]);
+
+    // Description field
+    let desc_style = field_border_style(form.active_field == FormField::Description);
+    let desc_block = Block::default()
+        .title("Description")
+        .borders(Borders::ALL)
+        .border_style(desc_style);
+    let desc_text = if form.active_field == FormField::Description {
+        format!("{}\u{2588}", form.description)
+    } else {
+        form.description.clone()
+    };
+    let desc_widget = Paragraph::new(desc_text)
+        .block(desc_block)
+        .wrap(Wrap { trim: false });
+    frame.render_widget(desc_widget, field_layout[1]);
+
+    // Priority field
+    let prio_style = field_border_style(form.active_field == FormField::Priority);
+    let prio_block = Block::default()
+        .title("Priority (Left/Right to change)")
+        .borders(Borders::ALL)
+        .border_style(prio_style);
+    let prio_text = format!("< {} >", PRIORITY_NAMES[form.priority]);
+    let prio_widget = Paragraph::new(prio_text).block(prio_block);
+    frame.render_widget(prio_widget, field_layout[2]);
+
+    // Labels field
+    let label_style = field_border_style(form.active_field == FormField::Labels);
+    let label_block = Block::default()
+        .title("Labels (Space to toggle)")
+        .borders(Borders::ALL)
+        .border_style(label_style);
+
+    if form.available_labels.is_empty() {
+        let label_widget = Paragraph::new("  No labels available").block(label_block);
+        frame.render_widget(label_widget, field_layout[3]);
+    } else {
+        let label_items: Vec<ListItem> = form
+            .available_labels
+            .iter()
+            .enumerate()
+            .map(|(i, label)| {
+                let check = if form.selected_labels[i] {
+                    "[x]"
+                } else {
+                    "[ ]"
+                };
+                let prefix = if form.active_field == FormField::Labels && i == form.label_cursor {
+                    "> "
+                } else {
+                    "  "
+                };
+                ListItem::new(format!("{prefix}{check} {}", label.title))
+            })
+            .collect();
+        let label_list = List::new(label_items).block(label_block);
+        frame.render_widget(label_list, field_layout[3]);
+    }
+
+    // Confirm discard dialog
+    if confirming {
+        let dialog_width = 40u16.min(area.width);
+        let dialog_height = 5u16;
+        let dx = (area.width.saturating_sub(dialog_width)) / 2;
+        let dy = (area.height.saturating_sub(dialog_height)) / 2;
+        let dialog_area = ratatui::layout::Rect::new(dx, dy, dialog_width, dialog_height);
+
+        frame.render_widget(Clear, dialog_area);
+        let dialog_block = Block::default()
+            .title("Discard changes?")
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Green));
+            .border_style(Style::default().fg(Color::Red));
+        let dialog = Paragraph::new("  y: discard  n: keep editing").block(dialog_block);
+        frame.render_widget(dialog, dialog_area);
+    }
+}
 
-        let input = Paragraph::new(format!("{}\u{2588}", app.create_input)).block(block);
-
-        frame.render_widget(Clear, popup_area);
-        frame.render_widget(input, popup_area);
+fn field_border_style(active: bool) -> Style {
+    if active {
+        Style::default().fg(Color::Cyan)
+    } else {
+        Style::default().fg(Color::DarkGray)
     }
 }
 
@@ -371,30 +585,96 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
                     }
                     _ => {}
                 },
-                Mode::CreateTask => match key.code {
-                    KeyCode::Esc => app.cancel_create(),
-                    KeyCode::Enter => {
-                        let title = app.create_input.trim().to_string();
-                        app.cancel_create();
-                        if !title.is_empty() {
-                            match project.create_task(&title, None, None).await {
-                                Ok(_) => {
-                                    if let Ok(board) = project.list_board().await {
-                                        app.update_board(board);
-                                    }
-                                }
-                                Err(e) => app.poll_error = Some(e.to_string()),
-                            }
-                        }
-                    }
-                    KeyCode::Backspace => {
-                        app.create_input.pop();
-                    }
-                    KeyCode::Char(c) => {
-                        app.create_input.push(c);
-                    }
+                Mode::ConfirmDiscard => match key.code {
+                    KeyCode::Char('y') => app.cancel_create(),
+                    KeyCode::Char('n') | KeyCode::Esc => app.mode = Mode::CreateTask,
                     _ => {}
                 },
+                Mode::CreateTask => {
+                    // Ctrl+S to save
+                    if key.code == KeyCode::Char('s')
+                        && key.modifiers.contains(KeyModifiers::CONTROL)
+                    {
+                        if let Some(form) = app.create_form.take() {
+                            let title = form.title.trim().to_string();
+                            app.mode = Mode::Board;
+                            if !title.is_empty() {
+                                let desc = if form.description.trim().is_empty() {
+                                    None
+                                } else {
+                                    Some(form.description.as_str())
+                                };
+                                match project
+                                    .create_task(&title, desc, form.priority_value())
+                                    .await
+                                {
+                                    Ok(task) => {
+                                        // Add labels to created task
+                                        for label_id in form.selected_label_ids() {
+                                            let id_str = task.display_id();
+                                            let _ = project.add_label(&id_str, label_id).await;
+                                        }
+                                        if let Ok(board) = project.list_board().await {
+                                            app.update_board(board);
+                                        }
+                                    }
+                                    Err(e) => app.poll_error = Some(e.to_string()),
+                                }
+                            }
+                        }
+                    } else if let Some(form) = &mut app.create_form {
+                        match key.code {
+                            KeyCode::Esc => app.try_cancel_create(),
+                            KeyCode::Tab => form.next_field(),
+                            KeyCode::BackTab => form.prev_field(),
+                            _ => match form.active_field {
+                                FormField::Title => match key.code {
+                                    KeyCode::Backspace => {
+                                        form.title.pop();
+                                    }
+                                    KeyCode::Char(c) => form.title.push(c),
+                                    _ => {}
+                                },
+                                FormField::Description => match key.code {
+                                    KeyCode::Backspace => {
+                                        form.description.pop();
+                                    }
+                                    KeyCode::Enter => form.description.push('\n'),
+                                    KeyCode::Char(c) => form.description.push(c),
+                                    _ => {}
+                                },
+                                FormField::Priority => match key.code {
+                                    KeyCode::Left | KeyCode::Char('h') => {
+                                        form.priority = form.priority.saturating_sub(1);
+                                    }
+                                    KeyCode::Right | KeyCode::Char('l') => {
+                                        form.priority =
+                                            (form.priority + 1).min(PRIORITY_NAMES.len() - 1);
+                                    }
+                                    _ => {}
+                                },
+                                FormField::Labels => match key.code {
+                                    KeyCode::Char('j') | KeyCode::Down => {
+                                        if !form.available_labels.is_empty() {
+                                            form.label_cursor = (form.label_cursor + 1)
+                                                .min(form.available_labels.len() - 1);
+                                        }
+                                    }
+                                    KeyCode::Char('k') | KeyCode::Up => {
+                                        form.label_cursor = form.label_cursor.saturating_sub(1);
+                                    }
+                                    KeyCode::Char(' ') => {
+                                        if form.label_cursor < form.selected_labels.len() {
+                                            form.selected_labels[form.label_cursor] =
+                                                !form.selected_labels[form.label_cursor];
+                                        }
+                                    }
+                                    _ => {}
+                                },
+                            },
+                        }
+                    }
+                }
                 Mode::Board => match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
                     KeyCode::Char('j') | KeyCode::Down => app.move_down(),
@@ -403,7 +683,10 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
                     KeyCode::Char('l') | KeyCode::Right | KeyCode::Tab => app.move_right(),
                     KeyCode::BackTab => app.move_left(),
                     KeyCode::Enter | KeyCode::Char('o') => app.open_detail(),
-                    KeyCode::Char('c') => app.start_create(),
+                    KeyCode::Char('c') => {
+                        let labels = project.list_labels().await.unwrap_or_default();
+                        app.start_create(labels);
+                    }
                     _ => {}
                 },
             }
