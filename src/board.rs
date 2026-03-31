@@ -15,7 +15,6 @@ use tokio::sync::mpsc;
 
 use crate::client::{Label, Task, VikunjaClient};
 use crate::project::{BoardState, ProjectClient};
-use crate::server::format_task_detail;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -392,13 +391,17 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
         let y = (area.height.saturating_sub(popup_height)) / 2;
         let popup_area = ratatui::layout::Rect::new(x, y, popup_width, popup_height);
 
-        let detail_text = format_task_detail(task);
+        let lines = build_detail_lines(task);
         let block = Block::default()
-            .title("Task Detail (Esc to close, j/k to scroll)")
+            .title(format!(
+                "{}: {} (Esc to close, j/k to scroll, e to edit)",
+                task.display_id(),
+                task.title
+            ))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Yellow));
 
-        let paragraph = Paragraph::new(detail_text)
+        let paragraph = Paragraph::new(lines)
             .block(block)
             .wrap(Wrap { trim: false })
             .scroll((app.detail_scroll, 0));
@@ -549,6 +552,125 @@ fn draw_task_form(frame: &mut ratatui::Frame, form: &TaskForm, title: &str, conf
     }
 }
 
+fn build_detail_lines(task: &Task) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+
+    // Status
+    let status_style = if task.done {
+        Style::default().fg(Color::Green)
+    } else {
+        Style::default().fg(Color::Yellow)
+    };
+    let status_text = if task.done { "Done" } else { "Open" };
+    lines.push(Line::from(vec![
+        Span::styled("Status: ", Style::default().fg(Color::DarkGray)),
+        Span::styled(status_text.to_string(), status_style),
+    ]));
+
+    // Priority
+    let (priority_name, priority_style) = match task.priority {
+        4 => (
+            "Urgent",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        ),
+        3 => ("High", Style::default().fg(Color::Red)),
+        2 => ("Medium", Style::default().fg(Color::Yellow)),
+        1 => ("Low", Style::default().fg(Color::Blue)),
+        _ => ("None", Style::default().fg(Color::DarkGray)),
+    };
+    if task.priority > 0 {
+        lines.push(Line::from(vec![
+            Span::styled("Priority: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(priority_name.to_string(), priority_style),
+        ]));
+    }
+
+    // Labels
+    if !task.labels.is_empty() {
+        let mut spans = vec![Span::styled(
+            "Labels: ",
+            Style::default().fg(Color::DarkGray),
+        )];
+        for (i, label) in task.labels.iter().enumerate() {
+            if i > 0 {
+                spans.push(Span::raw(", "));
+            }
+            spans.push(Span::styled(
+                label.title.clone(),
+                Style::default().fg(Color::Magenta),
+            ));
+        }
+        lines.push(Line::from(spans));
+    }
+
+    // Assignees
+    if !task.assignees.is_empty() {
+        let mut spans = vec![Span::styled(
+            "Assignees: ",
+            Style::default().fg(Color::DarkGray),
+        )];
+        for (i, user) in task.assignees.iter().enumerate() {
+            if i > 0 {
+                spans.push(Span::raw(", "));
+            }
+            let name = if user.name.is_empty() {
+                user.username.clone()
+            } else {
+                user.name.clone()
+            };
+            spans.push(Span::styled(name, Style::default().fg(Color::Cyan)));
+        }
+        lines.push(Line::from(spans));
+    }
+
+    // Relations
+    if !task.related_tasks.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Relations",
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )));
+        for (kind, related) in &task.related_tasks {
+            for t in related {
+                let status_indicator = if t.done { " ✓" } else { "" };
+                let rel_style = if t.done {
+                    Style::default().fg(Color::DarkGray)
+                } else {
+                    Style::default()
+                };
+                lines.push(Line::from(vec![
+                    Span::styled(format!("  {kind}: "), Style::default().fg(Color::DarkGray)),
+                    Span::styled(format!("{} {}", t.display_id(), t.title), rel_style),
+                    Span::styled(
+                        status_indicator.to_string(),
+                        Style::default().fg(Color::Green),
+                    ),
+                ]));
+            }
+        }
+    }
+
+    // Description
+    if !task.description.is_empty() {
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "Description",
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )));
+        let description = crate::markdown::html_to_markdown(&task.description)
+            .unwrap_or_else(|_| task.description.clone());
+        for line in description.trim_end().lines() {
+            lines.push(Line::from(line.to_string()));
+        }
+    }
+
+    lines
+}
+
 fn field_border_style(active: bool) -> Style {
     if active {
         Style::default().fg(Color::Cyan)
@@ -627,6 +749,13 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
                     }
                     KeyCode::Char('k') | KeyCode::Up => {
                         app.detail_scroll = app.detail_scroll.saturating_sub(1);
+                    }
+                    KeyCode::Char('e') => {
+                        if let Some(task) = app.detail_task.clone() {
+                            app.close_detail();
+                            let labels = project.list_labels().await.unwrap_or_default();
+                            app.start_edit(&task, labels);
+                        }
                     }
                     _ => {}
                 },
