@@ -10,11 +10,12 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use tokio::sync::mpsc;
 
 use crate::client::{Task, VikunjaClient};
 use crate::project::{BoardState, ProjectClient};
+use crate::server::format_task_detail;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -24,6 +25,8 @@ struct App {
     list_states: [ListState; 3],
     last_refresh: Instant,
     poll_error: Option<String>,
+    detail_task: Option<Task>,
+    detail_scroll: u16,
 }
 
 impl App {
@@ -42,6 +45,8 @@ impl App {
             ],
             last_refresh: Instant::now(),
             poll_error: None,
+            detail_task: None,
+            detail_scroll: 0,
         }
     }
 
@@ -107,6 +112,24 @@ impl App {
         if self.selected_column < 2 {
             self.selected_column += 1;
         }
+    }
+
+    fn selected_task(&self) -> Option<&Task> {
+        let col = self.selected_column;
+        let tasks = self.column_tasks(col);
+        self.list_states[col].selected().and_then(|i| tasks.get(i))
+    }
+
+    fn open_detail(&mut self) {
+        if let Some(task) = self.selected_task() {
+            self.detail_task = Some(task.clone());
+            self.detail_scroll = 0;
+        }
+    }
+
+    fn close_detail(&mut self) {
+        self.detail_task = None;
+        self.detail_scroll = 0;
     }
 }
 
@@ -199,7 +222,7 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
         vec![
             Span::raw(format!(" Updated {elapsed}s ago")),
             Span::styled(
-                " | q: quit  j/k: up/down  h/l: columns",
+                " | q: quit  j/k: up/down  h/l: columns  o: open",
                 Style::default().fg(Color::DarkGray),
             ),
         ]
@@ -207,6 +230,30 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
 
     let status_bar = Paragraph::new(Line::from(status_text));
     frame.render_widget(status_bar, outer[1]);
+
+    // Task detail overlay
+    if let Some(task) = &app.detail_task {
+        let area = frame.area();
+        let popup_width = (area.width * 3 / 4).max(40).min(area.width);
+        let popup_height = (area.height * 3 / 4).max(10).min(area.height);
+        let x = (area.width.saturating_sub(popup_width)) / 2;
+        let y = (area.height.saturating_sub(popup_height)) / 2;
+        let popup_area = ratatui::layout::Rect::new(x, y, popup_width, popup_height);
+
+        let detail_text = format_task_detail(task);
+        let block = Block::default()
+            .title("Task Detail (Esc to close, j/k to scroll)")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Yellow));
+
+        let paragraph = Paragraph::new(detail_text)
+            .block(block)
+            .wrap(Wrap { trim: false })
+            .scroll((app.detail_scroll, 0));
+
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(paragraph, popup_area);
+    }
 }
 
 enum PollResult {
@@ -270,14 +317,28 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
             if key.kind != KeyEventKind::Press {
                 continue;
             }
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => break,
-                KeyCode::Char('j') | KeyCode::Down => app.move_down(),
-                KeyCode::Char('k') | KeyCode::Up => app.move_up(),
-                KeyCode::Char('h') | KeyCode::Left => app.move_left(),
-                KeyCode::Char('l') | KeyCode::Right | KeyCode::Tab => app.move_right(),
-                KeyCode::BackTab => app.move_left(),
-                _ => {}
+            if app.detail_task.is_some() {
+                match key.code {
+                    KeyCode::Esc | KeyCode::Char('q') => app.close_detail(),
+                    KeyCode::Char('j') | KeyCode::Down => {
+                        app.detail_scroll = app.detail_scroll.saturating_add(1);
+                    }
+                    KeyCode::Char('k') | KeyCode::Up => {
+                        app.detail_scroll = app.detail_scroll.saturating_sub(1);
+                    }
+                    _ => {}
+                }
+            } else {
+                match key.code {
+                    KeyCode::Char('q') | KeyCode::Esc => break,
+                    KeyCode::Char('j') | KeyCode::Down => app.move_down(),
+                    KeyCode::Char('k') | KeyCode::Up => app.move_up(),
+                    KeyCode::Char('h') | KeyCode::Left => app.move_left(),
+                    KeyCode::Char('l') | KeyCode::Right | KeyCode::Tab => app.move_right(),
+                    KeyCode::BackTab => app.move_left(),
+                    KeyCode::Enter | KeyCode::Char('o') => app.open_detail(),
+                    _ => {}
+                }
             }
         }
 

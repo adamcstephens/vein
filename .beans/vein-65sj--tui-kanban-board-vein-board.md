@@ -1,11 +1,11 @@
 ---
 # vein-65sj
 title: TUI kanban board (vein board)
-status: in-progress
+status: completed
 type: feature
 priority: normal
 created_at: 2026-03-31T02:40:00Z
-updated_at: 2026-03-31T02:54:33Z
+updated_at: 2026-03-31T20:47:19Z
 ---
 
 Read-only 3-panel TUI kanban board that polls Vikunja and displays Ready | In Progress | Done columns. Uses ratatui + crossterm. Single API call per poll cycle (5s interval). Navigation with arrow keys / j/k/h/l/tab. No move/open interactivity in first pass.
@@ -75,3 +75,12 @@ pub struct BoardState {
 - Move tasks between columns (claim/complete via keybinds)
 - Open task detail in modal overlay
 - Configurable poll interval
+
+
+## Summary of Changes
+
+- Added `BoardState` struct and `list_board()` to `ProjectClient` — single API call via `list_buckets()`, splits by bucket ID, filters blocked tasks from ready column, sorts by position
+- Created `src/board.rs` TUI module using ratatui + crossterm — 3-panel kanban layout, 5s background polling over tokio mpsc, vim-style navigation (j/k/h/l/tab), status bar with refresh time and keybind hints
+- Added `Board` CLI command variant wired through `main.rs`
+- Added dependencies: ratatui 0.30.0, crossterm 0.29.0, tokio `time` feature
+- 4 unit tests for `list_board()` + 1 CLI parse test
