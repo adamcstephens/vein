@@ -19,6 +19,12 @@ use crate::server::format_task_detail;
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
+enum Mode {
+    Board,
+    Detail,
+    CreateTask,
+}
+
 struct App {
     board: BoardState,
     selected_column: usize,
@@ -27,6 +33,8 @@ struct App {
     poll_error: Option<String>,
     detail_task: Option<Task>,
     detail_scroll: u16,
+    mode: Mode,
+    create_input: String,
 }
 
 impl App {
@@ -47,6 +55,8 @@ impl App {
             poll_error: None,
             detail_task: None,
             detail_scroll: 0,
+            mode: Mode::Board,
+            create_input: String::new(),
         }
     }
 
@@ -124,12 +134,24 @@ impl App {
         if let Some(task) = self.selected_task() {
             self.detail_task = Some(task.clone());
             self.detail_scroll = 0;
+            self.mode = Mode::Detail;
         }
     }
 
     fn close_detail(&mut self) {
         self.detail_task = None;
         self.detail_scroll = 0;
+        self.mode = Mode::Board;
+    }
+
+    fn start_create(&mut self) {
+        self.create_input.clear();
+        self.mode = Mode::CreateTask;
+    }
+
+    fn cancel_create(&mut self) {
+        self.create_input.clear();
+        self.mode = Mode::Board;
     }
 }
 
@@ -222,7 +244,7 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
         vec![
             Span::raw(format!(" Updated {elapsed}s ago")),
             Span::styled(
-                " | q: quit  j/k: up/down  h/l: columns  o: open",
+                " | q: quit  j/k: up/down  h/l: columns  o: open  c: create",
                 Style::default().fg(Color::DarkGray),
             ),
         ]
@@ -254,11 +276,31 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
         frame.render_widget(Clear, popup_area);
         frame.render_widget(paragraph, popup_area);
     }
+
+    // Create task input overlay
+    if matches!(app.mode, Mode::CreateTask) {
+        let area = frame.area();
+        let popup_width = (area.width * 2 / 3).max(30).min(area.width);
+        let popup_height = 3;
+        let x = (area.width.saturating_sub(popup_width)) / 2;
+        let y = (area.height.saturating_sub(popup_height)) / 2;
+        let popup_area = ratatui::layout::Rect::new(x, y, popup_width, popup_height);
+
+        let block = Block::default()
+            .title("New Task Title (Enter to create, Esc to cancel)")
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Green));
+
+        let input = Paragraph::new(format!("{}\u{2588}", app.create_input)).block(block);
+
+        frame.render_widget(Clear, popup_area);
+        frame.render_widget(input, popup_area);
+    }
 }
 
-enum PollResult {
-    Ok(BoardState),
-    Err(String),
+enum AppEvent {
+    BoardUpdate(BoardState),
+    PollError(String),
 }
 
 pub async fn run<C: VikunjaClient + Clone + Send + Sync + 'static>(
@@ -290,18 +332,19 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
         Err(e) => app.poll_error = Some(e.to_string()),
     }
 
-    let (tx, mut rx) = mpsc::channel::<PollResult>(1);
+    let (tx, mut rx) = mpsc::channel::<AppEvent>(4);
 
     // Spawn background poller
+    let poll_tx = tx.clone();
     let poll_project = project.clone();
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(POLL_INTERVAL).await;
-            let result = match poll_project.list_board().await {
-                Ok(board) => PollResult::Ok(board),
-                Err(e) => PollResult::Err(e.to_string()),
+            let event = match poll_project.list_board().await {
+                Ok(board) => AppEvent::BoardUpdate(board),
+                Err(e) => AppEvent::PollError(e.to_string()),
             };
-            if tx.send(result).await.is_err() {
+            if poll_tx.send(event).await.is_err() {
                 break;
             }
         }
@@ -317,8 +360,8 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
             if key.kind != KeyEventKind::Press {
                 continue;
             }
-            if app.detail_task.is_some() {
-                match key.code {
+            match app.mode {
+                Mode::Detail => match key.code {
                     KeyCode::Esc | KeyCode::Char('q') => app.close_detail(),
                     KeyCode::Char('j') | KeyCode::Down => {
                         app.detail_scroll = app.detail_scroll.saturating_add(1);
@@ -327,9 +370,32 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
                         app.detail_scroll = app.detail_scroll.saturating_sub(1);
                     }
                     _ => {}
-                }
-            } else {
-                match key.code {
+                },
+                Mode::CreateTask => match key.code {
+                    KeyCode::Esc => app.cancel_create(),
+                    KeyCode::Enter => {
+                        let title = app.create_input.trim().to_string();
+                        app.cancel_create();
+                        if !title.is_empty() {
+                            match project.create_task(&title, None, None).await {
+                                Ok(_) => {
+                                    if let Ok(board) = project.list_board().await {
+                                        app.update_board(board);
+                                    }
+                                }
+                                Err(e) => app.poll_error = Some(e.to_string()),
+                            }
+                        }
+                    }
+                    KeyCode::Backspace => {
+                        app.create_input.pop();
+                    }
+                    KeyCode::Char(c) => {
+                        app.create_input.push(c);
+                    }
+                    _ => {}
+                },
+                Mode::Board => match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
                     KeyCode::Char('j') | KeyCode::Down => app.move_down(),
                     KeyCode::Char('k') | KeyCode::Up => app.move_up(),
@@ -337,16 +403,17 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
                     KeyCode::Char('l') | KeyCode::Right | KeyCode::Tab => app.move_right(),
                     KeyCode::BackTab => app.move_left(),
                     KeyCode::Enter | KeyCode::Char('o') => app.open_detail(),
+                    KeyCode::Char('c') => app.start_create(),
                     _ => {}
-                }
+                },
             }
         }
 
-        // Check for poll updates
-        while let Ok(result) = rx.try_recv() {
-            match result {
-                PollResult::Ok(board) => app.update_board(board),
-                PollResult::Err(e) => app.poll_error = Some(e),
+        // Check for app events
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                AppEvent::BoardUpdate(board) => app.update_board(board),
+                AppEvent::PollError(e) => app.poll_error = Some(e),
             }
         }
     }
