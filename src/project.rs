@@ -219,6 +219,7 @@ pub struct BoardState {
     pub ready: Vec<Task>,
     pub in_progress: Vec<Task>,
     pub done: Vec<Task>,
+    pub column_names: [String; 3],
 }
 
 impl<C: VikunjaClient> ProjectClient<C> {
@@ -232,19 +233,28 @@ impl<C: VikunjaClient> ProjectClient<C> {
         let mut ready = Vec::new();
         let mut in_progress = Vec::new();
         let mut done = Vec::new();
+        let mut column_names = [
+            String::from("Ready"),
+            String::from("In Progress"),
+            String::from("Done"),
+        ];
 
         for bucket in buckets {
-            let target = if bucket.id == self.config.todo_bucket_id {
-                Some(&mut ready)
+            if bucket.id == self.config.todo_bucket_id {
+                column_names[0] = bucket.title.clone();
+                ready.extend(bucket.tasks.into_iter().map(|mut task| {
+                    task.bucket_id = bucket.id;
+                    task
+                }));
             } else if bucket.id == self.config.inprogress_bucket_id {
-                Some(&mut in_progress)
+                column_names[1] = bucket.title.clone();
+                in_progress.extend(bucket.tasks.into_iter().map(|mut task| {
+                    task.bucket_id = bucket.id;
+                    task
+                }));
             } else if bucket.id == self.config.done_bucket_id {
-                Some(&mut done)
-            } else {
-                None
-            };
-            if let Some(target) = target {
-                target.extend(bucket.tasks.into_iter().map(|mut task| {
+                column_names[2] = bucket.title.clone();
+                done.extend(bucket.tasks.into_iter().map(|mut task| {
                     task.bucket_id = bucket.id;
                     task
                 }));
@@ -260,6 +270,7 @@ impl<C: VikunjaClient> ProjectClient<C> {
             ready,
             in_progress,
             done,
+            column_names,
         })
     }
 }

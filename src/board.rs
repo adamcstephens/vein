@@ -158,6 +158,11 @@ impl App {
                 ready: vec![],
                 in_progress: vec![],
                 done: vec![],
+                column_names: [
+                    String::from("Ready"),
+                    String::from("In Progress"),
+                    String::from("Done"),
+                ],
             },
             selected_column: 0,
             list_states: [
@@ -284,36 +289,49 @@ impl App {
     }
 }
 
+fn priority_style(priority: i64) -> Style {
+    match priority {
+        4 => Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+        3 => Style::default().fg(Color::Red),
+        2 => Style::default().fg(Color::Yellow),
+        1 => Style::default().fg(Color::Blue),
+        _ => Style::default().fg(Color::DarkGray),
+    }
+}
+
 fn format_task_item(task: &Task) -> ListItem<'static> {
-    let priority_indicator = match task.priority {
-        4 => "!! ",
-        3 => "!  ",
-        2 => "*  ",
-        1 => ".  ",
-        _ => "   ",
+    let (priority_indicator, prio_style) = match task.priority {
+        4 => ("!! ", priority_style(4)),
+        3 => ("!  ", priority_style(3)),
+        2 => ("*  ", priority_style(2)),
+        1 => (".  ", priority_style(1)),
+        _ => ("   ", Style::default()),
     };
 
-    let labels = if task.labels.is_empty() {
-        String::new()
-    } else {
-        format!(
-            " [{}]",
-            task.labels
-                .iter()
-                .map(|l| l.title.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    };
+    let mut spans = vec![Span::styled(priority_indicator.to_string(), prio_style)];
 
-    let text = format!(
-        "{}{}: {}{}",
-        priority_indicator,
-        task.display_id(),
-        task.title,
-        labels
-    );
-    ListItem::new(text)
+    spans.push(Span::styled(
+        format!("{}: ", task.display_id()),
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    spans.push(Span::raw(task.title.clone()));
+
+    if !task.labels.is_empty() {
+        spans.push(Span::styled(
+            format!(
+                " [{}]",
+                task.labels
+                    .iter()
+                    .map(|l| l.title.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Style::default().fg(Color::Magenta),
+        ));
+    }
+
+    ListItem::new(Line::from(spans))
 }
 
 fn draw(frame: &mut ratatui::Frame, app: &mut App) {
@@ -325,10 +343,15 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
     ])
     .split(outer[0]);
 
+    let counts = [
+        app.board.ready.len(),
+        app.board.in_progress.len(),
+        app.board.done.len(),
+    ];
     let titles = [
-        format!("Ready ({})", app.board.ready.len()),
-        format!("In Progress ({})", app.board.in_progress.len()),
-        format!("Done ({})", app.board.done.len()),
+        format!("{} ({})", app.board.column_names[0], counts[0]),
+        format!("{} ({})", app.board.column_names[1], counts[1]),
+        format!("{} ({})", app.board.column_names[2], counts[2]),
     ];
 
     for (col, area) in columns.iter().enumerate() {
@@ -348,6 +371,7 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
 
         let highlight_style = if is_active {
             Style::default()
+                .fg(Color::Black)
                 .bg(Color::DarkGray)
                 .add_modifier(Modifier::BOLD)
         } else {
@@ -356,8 +380,7 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
 
         let list = List::new(items)
             .block(block)
-            .highlight_style(highlight_style)
-            .highlight_symbol("> ");
+            .highlight_style(highlight_style);
 
         frame.render_stateful_widget(list, *area, &mut app.list_states[col]);
     }
@@ -373,7 +396,7 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
         vec![
             Span::raw(format!(" Updated {elapsed}s ago")),
             Span::styled(
-                " | q: quit  j/k: up/down  h/l: columns  o: open  c: create  e: edit",
+                " | q: quit  j/k: up/down  h/l: columns  o: open  c: create  e: edit  r: refresh",
                 Style::default().fg(Color::DarkGray),
             ),
         ]
@@ -909,6 +932,10 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
                             app.start_edit(&task, labels);
                         }
                     }
+                    KeyCode::Char('r') => match project.list_board().await {
+                        Ok(board) => app.update_board(board),
+                        Err(e) => app.poll_error = Some(e.to_string()),
+                    },
                     _ => {}
                 },
             }
