@@ -25,6 +25,7 @@ enum Mode {
     Board,
     Detail,
     CreateTask,
+    EditTask,
     ConfirmDiscard,
 }
 
@@ -43,7 +44,7 @@ const FORM_FIELDS: &[FormField] = &[
     FormField::Labels,
 ];
 
-struct CreateForm {
+struct TaskForm {
     title: String,
     description: String,
     priority: usize, // index into PRIORITY_NAMES
@@ -51,12 +52,14 @@ struct CreateForm {
     selected_labels: Vec<bool>,
     active_field: FormField,
     label_cursor: usize,
+    editing_task_id: Option<String>,
+    original_label_ids: Vec<i64>,
 }
 
-impl CreateForm {
+impl TaskForm {
     fn new(labels: Vec<Label>) -> Self {
         let label_count = labels.len();
-        CreateForm {
+        TaskForm {
             title: String::new(),
             description: String::new(),
             priority: 0,
@@ -64,6 +67,29 @@ impl CreateForm {
             selected_labels: vec![false; label_count],
             active_field: FormField::Title,
             label_cursor: 0,
+            editing_task_id: None,
+            original_label_ids: vec![],
+        }
+    }
+
+    fn from_task(task: &Task, labels: Vec<Label>) -> Self {
+        let task_label_ids: Vec<i64> = task.labels.iter().map(|l| l.id).collect();
+        let selected: Vec<bool> = labels
+            .iter()
+            .map(|l| task_label_ids.contains(&l.id))
+            .collect();
+        let description = crate::markdown::html_to_markdown(&task.description)
+            .unwrap_or_else(|_| task.description.clone());
+        TaskForm {
+            title: task.title.clone(),
+            description: description.trim_end().to_string(),
+            priority: task.priority as usize,
+            available_labels: labels,
+            selected_labels: selected,
+            active_field: FormField::Title,
+            label_cursor: 0,
+            editing_task_id: Some(task.display_id()),
+            original_label_ids: task_label_ids,
         }
     }
 
@@ -123,7 +149,7 @@ struct App {
     detail_task: Option<Task>,
     detail_scroll: u16,
     mode: Mode,
-    create_form: Option<CreateForm>,
+    task_form: Option<TaskForm>,
 }
 
 impl App {
@@ -145,7 +171,7 @@ impl App {
             detail_task: None,
             detail_scroll: 0,
             mode: Mode::Board,
-            create_form: None,
+            task_form: None,
         }
     }
 
@@ -234,19 +260,24 @@ impl App {
     }
 
     fn start_create(&mut self, labels: Vec<Label>) {
-        self.create_form = Some(CreateForm::new(labels));
+        self.task_form = Some(TaskForm::new(labels));
         self.mode = Mode::CreateTask;
     }
 
-    fn cancel_create(&mut self) {
-        self.create_form = None;
+    fn start_edit(&mut self, task: &Task, labels: Vec<Label>) {
+        self.task_form = Some(TaskForm::from_task(task, labels));
+        self.mode = Mode::EditTask;
+    }
+
+    fn close_form(&mut self) {
+        self.task_form = None;
         self.mode = Mode::Board;
     }
 
-    fn try_cancel_create(&mut self) {
-        if let Some(form) = &self.create_form {
+    fn try_close_form(&mut self) {
+        if let Some(form) = &self.task_form {
             if form.is_empty() {
-                self.cancel_create();
+                self.close_form();
             } else {
                 self.mode = Mode::ConfirmDiscard;
             }
@@ -343,7 +374,7 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
         vec![
             Span::raw(format!(" Updated {elapsed}s ago")),
             Span::styled(
-                " | q: quit  j/k: up/down  h/l: columns  o: open  c: create",
+                " | q: quit  j/k: up/down  h/l: columns  o: open  c: create  e: edit",
                 Style::default().fg(Color::DarkGray),
             ),
         ]
@@ -376,15 +407,27 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
         frame.render_widget(paragraph, popup_area);
     }
 
-    // Create task form overlay
-    if matches!(app.mode, Mode::CreateTask | Mode::ConfirmDiscard)
-        && let Some(form) = &app.create_form
+    // Task form overlay (create or edit)
+    if matches!(
+        app.mode,
+        Mode::CreateTask | Mode::EditTask | Mode::ConfirmDiscard
+    ) && let Some(form) = &app.task_form
     {
-        draw_create_form(frame, form, matches!(app.mode, Mode::ConfirmDiscard));
+        let form_title = if form.editing_task_id.is_some() {
+            "Edit Task"
+        } else {
+            "New Task"
+        };
+        draw_task_form(
+            frame,
+            form,
+            form_title,
+            matches!(app.mode, Mode::ConfirmDiscard),
+        );
     }
 }
 
-fn draw_create_form(frame: &mut ratatui::Frame, form: &CreateForm, confirming: bool) {
+fn draw_task_form(frame: &mut ratatui::Frame, form: &TaskForm, title: &str, confirming: bool) {
     let area = frame.area();
     let popup_width = (area.width * 4 / 5).max(50).min(area.width);
     let popup_height = (area.height * 4 / 5).max(16).min(area.height);
@@ -395,7 +438,9 @@ fn draw_create_form(frame: &mut ratatui::Frame, form: &CreateForm, confirming: b
     frame.render_widget(Clear, popup_area);
 
     let outer_block = Block::default()
-        .title("New Task (Ctrl+S: save, Esc: cancel, Tab: next field)")
+        .title(format!(
+            "{title} (Ctrl+S: save, Esc: cancel, Tab: next field)"
+        ))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Green));
     let inner = outer_block.inner(popup_area);
@@ -586,45 +631,87 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
                     _ => {}
                 },
                 Mode::ConfirmDiscard => match key.code {
-                    KeyCode::Char('y') => app.cancel_create(),
-                    KeyCode::Char('n') | KeyCode::Esc => app.mode = Mode::CreateTask,
+                    KeyCode::Char('y') => app.close_form(),
+                    KeyCode::Char('n') | KeyCode::Esc => {
+                        // Return to whichever form mode we came from
+                        app.mode = if app
+                            .task_form
+                            .as_ref()
+                            .is_some_and(|f| f.editing_task_id.is_some())
+                        {
+                            Mode::EditTask
+                        } else {
+                            Mode::CreateTask
+                        };
+                    }
                     _ => {}
                 },
-                Mode::CreateTask => {
+                Mode::CreateTask | Mode::EditTask => {
                     // Ctrl+S to save
                     if key.code == KeyCode::Char('s')
                         && key.modifiers.contains(KeyModifiers::CONTROL)
                     {
-                        if let Some(form) = app.create_form.take() {
-                            let title = form.title.trim().to_string();
+                        if let Some(form) = app.task_form.take() {
                             app.mode = Mode::Board;
+                            let title = form.title.trim().to_string();
                             if !title.is_empty() {
                                 let desc = if form.description.trim().is_empty() {
                                     None
                                 } else {
                                     Some(form.description.as_str())
                                 };
-                                match project
-                                    .create_task(&title, desc, form.priority_value())
-                                    .await
-                                {
-                                    Ok(task) => {
-                                        // Add labels to created task
-                                        for label_id in form.selected_label_ids() {
-                                            let id_str = task.display_id();
-                                            let _ = project.add_label(&id_str, label_id).await;
+                                if let Some(task_ref) = &form.editing_task_id {
+                                    // Edit existing task
+                                    match project
+                                        .update_task(
+                                            task_ref,
+                                            Some(title),
+                                            desc.map(String::from),
+                                            Some(form.priority as i64),
+                                        )
+                                        .await
+                                    {
+                                        Ok(_) => {
+                                            // Reconcile labels: add new, remove old
+                                            let new_ids = form.selected_label_ids();
+                                            for label_id in &new_ids {
+                                                if !form.original_label_ids.contains(label_id) {
+                                                    let _ = project
+                                                        .add_label(task_ref, *label_id)
+                                                        .await;
+                                                }
+                                            }
+                                            // Note: Vikunja API doesn't support removing labels
+                                            // via the current client, so only additions are applied
+                                            if let Ok(board) = project.list_board().await {
+                                                app.update_board(board);
+                                            }
                                         }
-                                        if let Ok(board) = project.list_board().await {
-                                            app.update_board(board);
-                                        }
+                                        Err(e) => app.poll_error = Some(e.to_string()),
                                     }
-                                    Err(e) => app.poll_error = Some(e.to_string()),
+                                } else {
+                                    // Create new task
+                                    match project
+                                        .create_task(&title, desc, form.priority_value())
+                                        .await
+                                    {
+                                        Ok(task) => {
+                                            for label_id in form.selected_label_ids() {
+                                                let id_str = task.display_id();
+                                                let _ = project.add_label(&id_str, label_id).await;
+                                            }
+                                            if let Ok(board) = project.list_board().await {
+                                                app.update_board(board);
+                                            }
+                                        }
+                                        Err(e) => app.poll_error = Some(e.to_string()),
+                                    }
                                 }
                             }
                         }
-                    } else if let Some(form) = &mut app.create_form {
+                    } else if let Some(form) = &mut app.task_form {
                         match key.code {
-                            KeyCode::Esc => app.try_cancel_create(),
+                            KeyCode::Esc => app.try_close_form(),
                             KeyCode::Tab => form.next_field(),
                             KeyCode::BackTab => form.prev_field(),
                             _ => match form.active_field {
@@ -686,6 +773,12 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
                     KeyCode::Char('c') => {
                         let labels = project.list_labels().await.unwrap_or_default();
                         app.start_create(labels);
+                    }
+                    KeyCode::Char('e') => {
+                        if let Some(task) = app.selected_task().cloned() {
+                            let labels = project.list_labels().await.unwrap_or_default();
+                            app.start_edit(&task, labels);
+                        }
                     }
                     _ => {}
                 },
