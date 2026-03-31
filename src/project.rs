@@ -213,6 +213,57 @@ impl<C: VikunjaClient> ProjectClient<C> {
     }
 }
 
+/// Snapshot of all three kanban columns from a single API call.
+#[derive(Debug, Clone)]
+pub struct BoardState {
+    pub ready: Vec<Task>,
+    pub in_progress: Vec<Task>,
+    pub done: Vec<Task>,
+}
+
+impl<C: VikunjaClient> ProjectClient<C> {
+    /// Fetch all three kanban columns in a single API call.
+    pub async fn list_board(&self) -> Result<BoardState, ClientError> {
+        let buckets = self
+            .client
+            .list_buckets(self.config.project_id, self.config.view_id)
+            .await?;
+
+        let mut ready = Vec::new();
+        let mut in_progress = Vec::new();
+        let mut done = Vec::new();
+
+        for bucket in buckets {
+            let target = if bucket.id == self.config.todo_bucket_id {
+                Some(&mut ready)
+            } else if bucket.id == self.config.inprogress_bucket_id {
+                Some(&mut in_progress)
+            } else if bucket.id == self.config.done_bucket_id {
+                Some(&mut done)
+            } else {
+                None
+            };
+            if let Some(target) = target {
+                target.extend(bucket.tasks.into_iter().map(|mut task| {
+                    task.bucket_id = bucket.id;
+                    task
+                }));
+            }
+        }
+
+        ready.retain(|t| !is_blocked(t));
+        sort_by_position(&mut ready);
+        sort_by_position(&mut in_progress);
+        sort_by_position(&mut done);
+
+        Ok(BoardState {
+            ready,
+            in_progress,
+            done,
+        })
+    }
+}
+
 fn sort_by_position(tasks: &mut [Task]) {
     tasks.sort_by(|a, b| {
         a.position
@@ -400,7 +451,21 @@ mod tests {
             unimplemented!()
         }
         async fn list_buckets(&self, _: i64, _: i64) -> Result<Vec<Bucket>, ClientError> {
-            unimplemented!()
+            let mut bucket_map: HashMap<i64, Vec<Task>> = HashMap::new();
+            for task in &self.tasks {
+                bucket_map
+                    .entry(task.bucket_id)
+                    .or_default()
+                    .push(task.clone());
+            }
+            Ok(bucket_map
+                .into_iter()
+                .map(|(id, tasks)| Bucket {
+                    id,
+                    title: format!("Bucket {id}"),
+                    tasks,
+                })
+                .collect())
         }
         async fn create_label(&self, title: &str) -> Result<Label, ClientError> {
             Ok(Label {
@@ -616,5 +681,75 @@ mod tests {
         assert_eq!(rel.task_id, 1);
         assert_eq!(rel.other_task_id, 2);
         assert_eq!(rel.relation_kind, "blocked");
+    }
+
+    #[tokio::test]
+    async fn list_board_splits_by_bucket() {
+        let mut ready_task = make_task(1, "Ready");
+        ready_task.bucket_id = 100; // todo_bucket_id
+        let mut wip_task = make_task(2, "WIP");
+        wip_task.bucket_id = 200; // inprogress_bucket_id
+        let mut done_task = make_task(3, "Done");
+        done_task.bucket_id = 300; // done_bucket_id
+
+        let pc = ProjectClient::new(
+            MockClient::new(vec![ready_task, wip_task, done_task]),
+            test_config(),
+        );
+        let board = pc.list_board().await.unwrap();
+        assert_eq!(board.ready.len(), 1);
+        assert_eq!(board.ready[0].title, "Ready");
+        assert_eq!(board.in_progress.len(), 1);
+        assert_eq!(board.in_progress[0].title, "WIP");
+        assert_eq!(board.done.len(), 1);
+        assert_eq!(board.done[0].title, "Done");
+    }
+
+    #[tokio::test]
+    async fn list_board_filters_blocked_from_ready() {
+        let mut blocked = make_task(1, "Blocked");
+        blocked.bucket_id = 100;
+        blocked.related_tasks.insert(
+            "blocked".to_string(),
+            vec![make_task(2, "Blocker")], // done: false
+        );
+        let mut ready = make_task(3, "Ready");
+        ready.bucket_id = 100;
+
+        let pc = ProjectClient::new(MockClient::new(vec![blocked, ready]), test_config());
+        let board = pc.list_board().await.unwrap();
+        assert_eq!(board.ready.len(), 1);
+        assert_eq!(board.ready[0].title, "Ready");
+    }
+
+    #[tokio::test]
+    async fn list_board_sorts_by_position() {
+        let mut t1 = make_task(1, "Third");
+        t1.bucket_id = 100;
+        t1.position = 30.0;
+        let mut t2 = make_task(2, "First");
+        t2.bucket_id = 100;
+        t2.position = 10.0;
+        let mut t3 = make_task(3, "Second");
+        t3.bucket_id = 100;
+        t3.position = 20.0;
+
+        let pc = ProjectClient::new(MockClient::new(vec![t1, t2, t3]), test_config());
+        let board = pc.list_board().await.unwrap();
+        assert_eq!(board.ready[0].title, "First");
+        assert_eq!(board.ready[1].title, "Second");
+        assert_eq!(board.ready[2].title, "Third");
+    }
+
+    #[tokio::test]
+    async fn list_board_ignores_unknown_buckets() {
+        let mut task = make_task(1, "Unknown");
+        task.bucket_id = 999; // not in config
+
+        let pc = ProjectClient::new(MockClient::new(vec![task]), test_config());
+        let board = pc.list_board().await.unwrap();
+        assert!(board.ready.is_empty());
+        assert!(board.in_progress.is_empty());
+        assert!(board.done.is_empty());
     }
 }

@@ -27,6 +27,8 @@ pub enum Command {
         /// View ID
         view_id: i64,
     },
+    /// Interactive kanban board TUI
+    Board,
     /// Run as MCP stdio server
     Serve,
     /// Generate shell completion script
@@ -367,6 +369,12 @@ mod tests {
             }
             other => panic!("expected CreateTask, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_board_subcommand() {
+        let cli = Cli::parse_from(["vein", "board"]);
+        assert!(matches!(cli.command, Some(Command::Board)));
     }
 
     #[test]

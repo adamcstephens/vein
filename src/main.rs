@@ -57,6 +57,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             generate(shell, &mut cmd, "vein", &mut std::io::stdout());
             Ok(())
         }
+        Some(Command::Board) => {
+            let conn_config = ConnectionConfig::from_env()?;
+            let project_config = ProjectConfig::from_env()?;
+            let client = ReqwestClient::new(&conn_config)?;
+            let project = ProjectClient::new(client, project_config);
+            vein::board::run(project).await
+        }
         Some(
             Command::ListReady
             | Command::ListTasks { .. }
