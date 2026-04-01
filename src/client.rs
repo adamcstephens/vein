@@ -188,6 +188,12 @@ pub trait VikunjaClient {
         bucket_id: i64,
         task_id: i64,
     ) -> impl Future<Output = Result<(), ClientError>> + Send;
+    fn update_task_position(
+        &self,
+        task_id: i64,
+        view_id: i64,
+        position: f64,
+    ) -> impl Future<Output = Result<(), ClientError>> + Send;
 }
 
 // --- Task reference resolution ---
@@ -394,6 +400,12 @@ struct CreateCommentPayload<'a> {
 #[derive(Serialize)]
 struct MoveTaskToBucketPayload {
     task_id: i64,
+}
+
+#[derive(Serialize)]
+struct UpdateTaskPositionPayload {
+    position: f64,
+    project_view_id: i64,
 }
 
 impl VikunjaClient for ReqwestClient {
@@ -679,6 +691,25 @@ impl VikunjaClient for ReqwestClient {
         Self::check_response(resp).await?;
         Ok(())
     }
+
+    async fn update_task_position(
+        &self,
+        task_id: i64,
+        view_id: i64,
+        position: f64,
+    ) -> Result<(), ClientError> {
+        let resp = self
+            .http
+            .post(self.url(&format!("/tasks/{task_id}/position")))
+            .json(&UpdateTaskPositionPayload {
+                position,
+                project_view_id: view_id,
+            })
+            .send()
+            .await?;
+        Self::check_response(resp).await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -797,6 +828,14 @@ mod tests {
             _view_id: i64,
             _bucket_id: i64,
             _task_id: i64,
+        ) -> Result<(), ClientError> {
+            unimplemented!()
+        }
+        async fn update_task_position(
+            &self,
+            _task_id: i64,
+            _view_id: i64,
+            _position: f64,
         ) -> Result<(), ClientError> {
             unimplemented!()
         }

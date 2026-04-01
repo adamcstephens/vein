@@ -31,7 +31,7 @@ else
   TOKEN=$(curl -sf -X PUT localhost:3456/api/v1/tokens \
     -H "Authorization: Bearer $JWT" \
     -H 'Content-Type: application/json' \
-    -d '{"title":"dev-token","permissions":{"projects":["read_all","read_one","create","update","delete","views_buckets","views_buckets_tasks"],"tasks":["read_all","read_one","create","update","delete"],"labels":["read_all","create"],"tasks_labels":["create"],"projects_views_tasks":["read_all"]},"expires_at":"2030-01-01T00:00:00Z"}' |
+    -d '{"title":"dev-token","permissions":{"projects":["read_all","read_one","create","update","delete","views_buckets","views_buckets_tasks"],"tasks":["read_all","read_one","create","update","delete","position"],"labels":["read_all","create"],"tasks_labels":["create"],"projects_views_tasks":["read_all"]},"expires_at":"2030-01-01T00:00:00Z"}' |
     gojq -r '.token')
   if [ -z "$TOKEN" ]; then
     echo "ERROR: Failed to create API token" >&2

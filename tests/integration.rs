@@ -566,3 +566,144 @@ async fn hash_ref_resolves_by_project_index_not_global_id() {
     );
     assert_eq!(claimed.title, "Task in project B");
 }
+
+#[tokio::test]
+async fn update_task_position_reorders_tasks_in_kanban_view() {
+    let test_project = TestProject::create(vikunja_client())
+        .await
+        .expect("failed to create test project");
+
+    let client = vikunja_client();
+    let view_id = test_project.config.view_id;
+
+    // Create three tasks
+    client
+        .create_task(test_project.config.project_id, "Task A", "", None)
+        .await
+        .expect("failed to create task A");
+    client
+        .create_task(test_project.config.project_id, "Task B", "", None)
+        .await
+        .expect("failed to create task B");
+    client
+        .create_task(test_project.config.project_id, "Task C", "", None)
+        .await
+        .expect("failed to create task C");
+
+    // Get initial order
+    let tasks = client
+        .list_bucket_tasks(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            test_project.config.todo_bucket_id,
+        )
+        .await
+        .expect("failed to list tasks");
+    assert_eq!(tasks.len(), 3);
+    // Swap adjacent tasks: move the second task before the first
+    // by giving it a position between 0 and the first task's position.
+    // This is a single API call — the approach the board move mode should use.
+    let first_id = tasks[0].id;
+    let second_id = tasks[1].id;
+    let first_pos = tasks[0].position;
+    let before_first = first_pos / 2.0;
+    assert!(
+        before_first >= 0.01,
+        "position must be >= MinPositionSpacing (0.01)"
+    );
+    client
+        .update_task_position(second_id, view_id, before_first)
+        .await
+        .expect("failed to move second task before first");
+
+    // Verify: second task is now first
+    let tasks = client
+        .list_bucket_tasks(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            test_project.config.todo_bucket_id,
+        )
+        .await
+        .expect("failed to list tasks after swap");
+    assert_eq!(tasks[0].id, second_id, "second task should now be first");
+    assert_eq!(tasks[1].id, first_id, "first task should now be second");
+
+    // Swap in the middle: move the last task between the first two
+    let third_id = tasks[2].id;
+    let between = (tasks[0].position + tasks[1].position) / 2.0;
+    client
+        .update_task_position(third_id, view_id, between)
+        .await
+        .expect("failed to move third task to middle");
+
+    let tasks = client
+        .list_bucket_tasks(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            test_project.config.todo_bucket_id,
+        )
+        .await
+        .expect("failed to list tasks after middle insert");
+    assert_eq!(tasks[0].id, second_id, "first should still be second_id");
+    assert_eq!(tasks[1].id, third_id, "middle should now be third_id");
+    assert_eq!(tasks[2].id, first_id, "last should be first_id");
+}
+
+#[tokio::test]
+async fn move_to_column_changes_bucket_and_manages_done_flag() {
+    let client = vikunja_client();
+    let test_project = TestProject::create(client)
+        .await
+        .expect("failed to create test project");
+
+    let project = ProjectClient::new(vikunja_client(), test_project.config.clone());
+
+    // Create a task (lands in todo bucket)
+    let task = project
+        .create_task("Move me around", None, None)
+        .await
+        .expect("failed to create task");
+    let task_ref = task.display_id();
+
+    // Move to in-progress — should not be marked done
+    let moved = project
+        .move_to_column(&task_ref, test_project.config.inprogress_bucket_id)
+        .await
+        .expect("failed to move to in-progress");
+    assert!(
+        !moved.done,
+        "task should not be done when moved to in-progress"
+    );
+
+    // Verify it's in the in-progress bucket
+    let client = vikunja_client();
+    let in_progress = client
+        .list_bucket_tasks(
+            test_project.config.project_id,
+            test_project.config.view_id,
+            test_project.config.inprogress_bucket_id,
+        )
+        .await
+        .expect("failed to list in-progress");
+    assert!(
+        in_progress.iter().any(|t| t.id == task.id),
+        "task should be in in-progress bucket"
+    );
+
+    // Move to done — should be marked done
+    let moved = project
+        .move_to_column(&task_ref, test_project.config.done_bucket_id)
+        .await
+        .expect("failed to move to done");
+    assert!(moved.done, "task should be done when moved to done bucket");
+
+    // Move back to todo — should be unmarked
+    let moved = project
+        .move_to_column(&task_ref, test_project.config.todo_bucket_id)
+        .await
+        .expect("failed to move back to todo");
+    assert!(
+        !moved.done,
+        "task should not be done when moved back to todo"
+    );
+}

@@ -11,9 +11,9 @@ use ratatui::layout::{Constraint, Layout};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
-use tokio::sync::mpsc;
 
 use crate::client::{Label, Task, VikunjaClient};
+use crate::config::ProjectConfig;
 use crate::project::{BoardState, ProjectClient};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
@@ -26,6 +26,13 @@ enum Mode {
     CreateTask,
     EditTask,
     ConfirmDiscard,
+    Move,
+}
+
+struct MoveState {
+    task_id: i64,
+    original_column: usize,
+    original_board: BoardState,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -149,6 +156,7 @@ struct App {
     detail_scroll: u16,
     mode: Mode,
     task_form: Option<TaskForm>,
+    move_state: Option<MoveState>,
 }
 
 impl App {
@@ -176,6 +184,7 @@ impl App {
             detail_scroll: 0,
             mode: Mode::Board,
             task_form: None,
+            move_state: None,
         }
     }
 
@@ -287,6 +296,80 @@ impl App {
             }
         }
     }
+
+    fn column_tasks_mut(&mut self, col: usize) -> &mut Vec<Task> {
+        match col {
+            0 => &mut self.board.ready,
+            1 => &mut self.board.in_progress,
+            _ => &mut self.board.done,
+        }
+    }
+
+    fn select_task_in_column(&mut self, col: usize, task_id: i64) {
+        let tasks = self.column_tasks(col);
+        if let Some(idx) = tasks.iter().position(|t| t.id == task_id) {
+            self.list_states[col].select(Some(idx));
+        }
+    }
+
+    fn start_move(&mut self) {
+        if let Some(task) = self.selected_task() {
+            self.move_state = Some(MoveState {
+                task_id: task.id,
+                original_column: self.selected_column,
+                original_board: self.board.clone(),
+            });
+            self.mode = Mode::Move;
+        }
+    }
+
+    fn cancel_move(&mut self) {
+        if let Some(state) = self.move_state.take() {
+            self.board = state.original_board;
+            self.selected_column = state.original_column;
+            self.select_task_in_column(state.original_column, state.task_id);
+        }
+        self.mode = Mode::Board;
+    }
+
+    fn move_task_up(&mut self) {
+        let col = self.selected_column;
+        if let Some(idx) = self.list_states[col].selected()
+            && idx > 0
+        {
+            self.column_tasks_mut(col).swap(idx, idx - 1);
+            self.list_states[col].select(Some(idx - 1));
+        }
+    }
+
+    fn move_task_down(&mut self) {
+        let col = self.selected_column;
+        let len = self.column_tasks(col).len();
+        if let Some(idx) = self.list_states[col].selected()
+            && idx + 1 < len
+        {
+            self.column_tasks_mut(col).swap(idx, idx + 1);
+            self.list_states[col].select(Some(idx + 1));
+        }
+    }
+
+    fn move_task_to_column(&mut self, target_col: usize) {
+        let src_col = self.selected_column;
+        if let Some(idx) = self.list_states[src_col].selected() {
+            let task = self.column_tasks_mut(src_col).remove(idx);
+            let task_id = task.id;
+            self.column_tasks_mut(target_col).push(task);
+            // Clamp source column selection
+            let src_len = self.column_tasks(src_col).len();
+            if src_len == 0 {
+                self.list_states[src_col].select(None);
+            } else if idx >= src_len {
+                self.list_states[src_col].select(Some(src_len - 1));
+            }
+            self.selected_column = target_col;
+            self.select_task_in_column(target_col, task_id);
+        }
+    }
 }
 
 fn priority_style(priority: i64) -> Style {
@@ -354,9 +437,13 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
         format!("{} ({})", app.board.column_names[2], counts[2]),
     ];
 
+    let in_move_mode = matches!(app.mode, Mode::Move);
+
     for (col, area) in columns.iter().enumerate() {
         let is_active = col == app.selected_column;
-        let border_style = if is_active {
+        let border_style = if in_move_mode && is_active {
+            Style::default().fg(Color::Yellow)
+        } else if is_active {
             Style::default().fg(Color::Cyan)
         } else {
             Style::default().fg(Color::DarkGray)
@@ -396,7 +483,7 @@ fn draw(frame: &mut ratatui::Frame, app: &mut App) {
         vec![
             Span::raw(format!(" Updated {elapsed}s ago")),
             Span::styled(
-                " | q: quit  j/k: up/down  h/l: columns  o: open  c: create  e: edit  r: refresh",
+                " | q: quit  j/k: up/down  h/l: columns  o: open  c: create  e: edit  m: move  r: refresh",
                 Style::default().fg(Color::DarkGray),
             ),
         ]
@@ -694,17 +781,20 @@ fn build_detail_lines(task: &Task) -> Vec<Line<'static>> {
     lines
 }
 
+fn column_bucket_id(config: &ProjectConfig, col: usize) -> i64 {
+    match col {
+        0 => config.todo_bucket_id,
+        1 => config.inprogress_bucket_id,
+        _ => config.done_bucket_id,
+    }
+}
+
 fn field_border_style(active: bool) -> Style {
     if active {
         Style::default().fg(Color::Cyan)
     } else {
         Style::default().fg(Color::DarkGray)
     }
-}
-
-enum AppEvent {
-    BoardUpdate(BoardState),
-    PollError(String),
 }
 
 pub async fn run<C: VikunjaClient + Clone + Send + Sync + 'static>(
@@ -735,24 +825,6 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
         Ok(board) => app.update_board(board),
         Err(e) => app.poll_error = Some(e.to_string()),
     }
-
-    let (tx, mut rx) = mpsc::channel::<AppEvent>(4);
-
-    // Spawn background poller
-    let poll_tx = tx.clone();
-    let poll_project = project.clone();
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(POLL_INTERVAL).await;
-            let event = match poll_project.list_board().await {
-                Ok(board) => AppEvent::BoardUpdate(board),
-                Err(e) => AppEvent::PollError(e.to_string()),
-            };
-            if poll_tx.send(event).await.is_err() {
-                break;
-            }
-        }
-    });
 
     loop {
         terminal.draw(|frame| draw(frame, &mut app))?;
@@ -932,20 +1004,90 @@ async fn run_loop<C: VikunjaClient + Clone + Send + Sync + 'static>(
                             app.start_edit(&task, labels);
                         }
                     }
+                    KeyCode::Char('m') => app.start_move(),
                     KeyCode::Char('r') => match project.list_board().await {
                         Ok(board) => app.update_board(board),
                         Err(e) => app.poll_error = Some(e.to_string()),
                     },
                     _ => {}
                 },
+                Mode::Move => match key.code {
+                    KeyCode::Esc => app.cancel_move(),
+                    KeyCode::Enter => {
+                        if let Some(state) = app.move_state.take() {
+                            let current_col = app.selected_column;
+                            let config = project.config().clone();
+
+                            // Column changed — move via API
+                            if current_col != state.original_column {
+                                let bucket_id = column_bucket_id(&config, current_col);
+                                if let Some(task) = app.selected_task() {
+                                    let task_ref = task.display_id();
+                                    if let Err(e) =
+                                        project.move_to_column(&task_ref, bucket_id).await
+                                    {
+                                        app.poll_error = Some(e.to_string());
+                                    }
+                                }
+                            }
+
+                            // Update position: compute a midpoint for the moved
+                            // task based on its neighbors in the new order.
+                            // Only the moved task needs a position update.
+                            let tasks = app.column_tasks(current_col);
+                            if let Some(idx) = tasks.iter().position(|t| t.id == state.task_id) {
+                                let new_pos = if tasks.len() == 1 {
+                                    65536.0
+                                } else if idx == 0 {
+                                    // Before the first — half of next task's position
+                                    let next_pos = tasks[1].position;
+                                    (next_pos / 2.0).max(0.01)
+                                } else if idx == tasks.len() - 1 {
+                                    // After the last — add 65536 to previous
+                                    tasks[idx - 1].position + 65536.0
+                                } else {
+                                    // Between two tasks — midpoint
+                                    (tasks[idx - 1].position + tasks[idx + 1].position) / 2.0
+                                };
+                                if let Err(e) = project
+                                    .client()
+                                    .update_task_position(state.task_id, config.view_id, new_pos)
+                                    .await
+                                {
+                                    app.poll_error = Some(e.to_string());
+                                }
+                            }
+
+                            // Refresh and reselect
+                            if let Ok(board) = project.list_board().await {
+                                app.update_board(board);
+                                app.select_task_in_column(current_col, state.task_id);
+                            }
+                        }
+                        app.mode = Mode::Board;
+                    }
+                    KeyCode::Char('j') | KeyCode::Down => app.move_task_down(),
+                    KeyCode::Char('k') | KeyCode::Up => app.move_task_up(),
+                    KeyCode::Char('h') | KeyCode::Left => {
+                        if app.selected_column > 0 {
+                            app.move_task_to_column(app.selected_column - 1);
+                        }
+                    }
+                    KeyCode::Char('l') | KeyCode::Right => {
+                        if app.selected_column < 2 {
+                            app.move_task_to_column(app.selected_column + 1);
+                        }
+                    }
+                    _ => {}
+                },
             }
         }
 
-        // Check for app events
-        while let Ok(event) = rx.try_recv() {
-            match event {
-                AppEvent::BoardUpdate(board) => app.update_board(board),
-                AppEvent::PollError(e) => app.poll_error = Some(e),
+        // Background poll
+        if app.last_refresh.elapsed() >= POLL_INTERVAL {
+            match project.list_board().await {
+                Ok(board) => app.update_board(board),
+                Err(e) => app.poll_error = Some(e.to_string()),
             }
         }
     }

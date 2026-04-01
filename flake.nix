@@ -32,6 +32,10 @@
               pkgs.rust-analyzer
               pkgs.rustfmt
             ];
+
+            shellHook = ''
+              export VIKUNJA_SRC=${pkgs.vikunja.src}
+            '';
           };
 
           packages = rec {

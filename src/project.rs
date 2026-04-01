@@ -43,43 +43,40 @@ impl<C: VikunjaClient> ProjectClient<C> {
         self.client.get_task(id).await
     }
 
-    /// Claim a task by moving it to the In Progress bucket.
-    pub async fn claim(&self, task_ref: &str) -> Result<Task, ClientError> {
+    /// Move a task to a target bucket, auto-managing the done flag.
+    pub async fn move_to_column(
+        &self,
+        task_ref: &str,
+        bucket_id: i64,
+    ) -> Result<Task, ClientError> {
         let id = self.resolve(task_ref).await?;
-        let task = self.client.get_task(id).await?;
-        self.client
-            .move_task_to_bucket(
-                self.config.project_id,
-                self.config.view_id,
-                self.config.inprogress_bucket_id,
-                id,
-            )
-            .await?;
-        Ok(task)
-    }
-
-    /// Mark a task as done and move it to the Done bucket.
-    pub async fn complete(&self, task_ref: &str) -> Result<Task, ClientError> {
-        let id = self.resolve(task_ref).await?;
+        let is_done = bucket_id == self.config.done_bucket_id;
         let task = self
             .client
             .update_task(
                 id,
                 TaskUpdate {
-                    done: Some(true),
+                    done: Some(is_done),
                     ..Default::default()
                 },
             )
             .await?;
         self.client
-            .move_task_to_bucket(
-                self.config.project_id,
-                self.config.view_id,
-                self.config.done_bucket_id,
-                id,
-            )
+            .move_task_to_bucket(self.config.project_id, self.config.view_id, bucket_id, id)
             .await?;
         Ok(task)
+    }
+
+    /// Claim a task by moving it to the In Progress bucket.
+    pub async fn claim(&self, task_ref: &str) -> Result<Task, ClientError> {
+        self.move_to_column(task_ref, self.config.inprogress_bucket_id)
+            .await
+    }
+
+    /// Mark a task as done and move it to the Done bucket.
+    pub async fn complete(&self, task_ref: &str) -> Result<Task, ClientError> {
+        self.move_to_column(task_ref, self.config.done_bucket_id)
+            .await
     }
 
     /// Add a markdown comment to a task.
@@ -515,6 +512,14 @@ mod tests {
                 .push((bucket_id, task_id));
             Ok(())
         }
+        async fn update_task_position(
+            &self,
+            _task_id: i64,
+            _view_id: i64,
+            _position: f64,
+        ) -> Result<(), ClientError> {
+            Ok(())
+        }
     }
 
     #[tokio::test]
@@ -762,5 +767,49 @@ mod tests {
         assert!(board.ready.is_empty());
         assert!(board.in_progress.is_empty());
         assert!(board.done.is_empty());
+    }
+
+    #[tokio::test]
+    async fn move_to_column_moves_to_inprogress() {
+        let pc = ProjectClient::new(
+            MockClient::new(vec![make_task(42, "Move Me")]),
+            test_config(),
+        );
+        let task = pc.move_to_column("42", 200).await.unwrap();
+        assert_eq!(task.title, "Move Me");
+
+        let state = pc.client().state.lock().unwrap();
+        assert_eq!(state.moved_to_bucket, vec![(200, 42)]);
+        // Moving to inprogress should set done = false
+        assert_eq!(state.updated_tasks.len(), 1);
+        assert_eq!(state.updated_tasks[0].1.done, Some(false));
+    }
+
+    #[tokio::test]
+    async fn move_to_column_sets_done_when_moving_to_done_bucket() {
+        let pc = ProjectClient::new(
+            MockClient::new(vec![make_task(42, "Finish Me")]),
+            test_config(),
+        );
+        let task = pc.move_to_column("42", 300).await.unwrap();
+        assert!(task.done);
+
+        let state = pc.client().state.lock().unwrap();
+        assert_eq!(state.moved_to_bucket, vec![(300, 42)]);
+        assert_eq!(state.updated_tasks[0].1.done, Some(true));
+    }
+
+    #[tokio::test]
+    async fn move_to_column_unsets_done_when_moving_to_todo() {
+        let mut task = make_task(42, "Reopen Me");
+        task.done = true;
+        let pc = ProjectClient::new(MockClient::new(vec![task]), test_config());
+        let result = pc.move_to_column("42", 100).await.unwrap();
+        // The mock returns the task after update_task, which should set done=false
+        assert!(!result.done);
+
+        let state = pc.client().state.lock().unwrap();
+        assert_eq!(state.moved_to_bucket, vec![(100, 42)]);
+        assert_eq!(state.updated_tasks[0].1.done, Some(false));
     }
 }
