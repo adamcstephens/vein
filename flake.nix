@@ -28,6 +28,7 @@
               pkgs.vikunja
 
               pkgs.cargo
+              pkgs.cargo-outdated
               pkgs.clippy
               pkgs.rustc
               pkgs.rust-analyzer
