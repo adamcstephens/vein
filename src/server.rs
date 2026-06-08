@@ -1,8 +1,6 @@
 use rmcp::{
     RoleServer, ServerHandler,
-    handler::server::{
-        router::prompt::PromptRouter, router::tool::ToolRouter, wrapper::Parameters,
-    },
+    handler::server::wrapper::Parameters,
     model::{
         GetPromptRequestParams, GetPromptResult, ListPromptsResult, PaginatedRequestParams,
         PromptMessage, PromptMessageRole, ServerCapabilities, ServerInfo,
@@ -33,16 +31,12 @@ pub fn parse_priority(s: &str) -> Result<i64, String> {
 #[derive(Debug, Clone)]
 pub struct VeinServer {
     project: ProjectClient<ReqwestClient>,
-    tool_router: ToolRouter<Self>,
-    prompt_router: PromptRouter<Self>,
 }
 
 impl VeinServer {
     pub fn new(client: ReqwestClient, project_config: ProjectConfig) -> Self {
         VeinServer {
             project: ProjectClient::new(client, project_config),
-            tool_router: Self::tool_router(),
-            prompt_router: Self::prompt_router(),
         }
     }
 }
