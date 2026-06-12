@@ -10,6 +10,12 @@ pub struct Cli {
 }
 
 #[derive(Subcommand, Debug)]
+pub enum PromptCommand {
+    /// Agent orientation: available tools, workflow guidance, and ready tasks
+    Orient,
+}
+
+#[derive(Subcommand, Debug)]
 pub enum Command {
     /// Discover Vikunja projects and buckets, print env var configuration
     Init,
@@ -109,6 +115,11 @@ pub enum Command {
         other_task_id: String,
         /// Relation kind (blocked, blocking, related, subtask, parenttask, etc.)
         relation_kind: String,
+    },
+    /// Print MCP prompt text
+    Prompt {
+        #[command(subcommand)]
+        prompt: PromptCommand,
     },
     /// Create a new task in the project
     CreateTask {
@@ -369,6 +380,23 @@ mod tests {
             }
             other => panic!("expected CreateTask, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn parses_prompt_orient_subcommand() {
+        let cli = Cli::parse_from(["vein", "prompt", "orient"]);
+        assert!(matches!(
+            cli.command,
+            Some(Command::Prompt {
+                prompt: PromptCommand::Orient
+            })
+        ));
+    }
+
+    #[test]
+    fn prompt_without_subcommand_fails() {
+        let result = Cli::try_parse_from(["vein", "prompt"]);
+        assert!(result.is_err());
     }
 
     #[test]

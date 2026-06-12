@@ -10,7 +10,7 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 
-use crate::client::{ReqwestClient, Task};
+use crate::client::{ReqwestClient, Task, VikunjaClient};
 use crate::config::ProjectConfig;
 use crate::markdown::html_to_markdown;
 use crate::project::ProjectClient;
@@ -123,22 +123,33 @@ impl VeinServer {
         description = "Agent orientation: available tools, workflow guidance, and ready tasks"
     )]
     async fn orient(&self) -> Vec<PromptMessage> {
-        let ready_tasks = self
-            .project
-            .list_ready()
-            .await
-            .map(|tasks| format_task_list(&tasks, "No tasks ready to be worked on."))
-            .unwrap_or_else(|e| format!("(failed to fetch ready tasks: {e})"));
+        let text = orient_text(&self.project).await;
 
-        let in_progress = self
-            .project
-            .list_in_progress()
-            .await
-            .map(|tasks| format_task_list(&tasks, "No tasks currently in progress."))
-            .unwrap_or_else(|e| format!("(failed to fetch in-progress tasks: {e})"));
+        vec![PromptMessage::new_text(PromptMessageRole::User, text)]
+    }
+}
 
-        let text = format!(
-            r#"# Vein — Agent Orientation
+/// Build the orient prompt text, fetching current task state from the project
+pub async fn orient_text<C: VikunjaClient>(project: &ProjectClient<C>) -> String {
+    let ready_tasks = project
+        .list_ready()
+        .await
+        .map(|tasks| format_task_list(&tasks, "No tasks ready to be worked on."))
+        .unwrap_or_else(|e| format!("(failed to fetch ready tasks: {e})"));
+
+    let in_progress = project
+        .list_in_progress()
+        .await
+        .map(|tasks| format_task_list(&tasks, "No tasks currently in progress."))
+        .unwrap_or_else(|e| format!("(failed to fetch in-progress tasks: {e})"));
+
+    format_orient(&ready_tasks, &in_progress)
+}
+
+/// Format the orient prompt text from pre-rendered task list sections
+pub fn format_orient(ready_tasks: &str, in_progress: &str) -> String {
+    format!(
+        r#"# Vein — Agent Orientation
 
 You are connected to a Vikunja-backed issue tracker. Use the tools below to manage your work.
 
@@ -176,10 +187,7 @@ You are connected to a Vikunja-backed issue tracker. Use the tools below to mana
 ### In progress
 {in_progress}
 "#
-        );
-
-        vec![PromptMessage::new_text(PromptMessageRole::User, text)]
-    }
+    )
 }
 
 #[tool_router]
@@ -673,6 +681,16 @@ mod tests {
         let params: UpdateTaskParams = serde_json::from_str(json).unwrap();
         assert_eq!(params.task_id, "VEIN-1");
         assert_eq!(params.priority.as_deref(), Some("urgent"));
+    }
+
+    #[test]
+    fn format_orient_contains_sections_and_task_lists() {
+        let text = format_orient("- VEIN-1: Ready task", "- VEIN-2: Active task");
+        assert!(text.contains("# Vein — Agent Orientation"));
+        assert!(text.contains("## Available Tools"));
+        assert!(text.contains("## Workflow"));
+        assert!(text.contains("### Ready to work on\n- VEIN-1: Ready task"));
+        assert!(text.contains("### In progress\n- VEIN-2: Active task"));
     }
 
     #[test]

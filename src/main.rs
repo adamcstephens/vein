@@ -2,12 +2,12 @@ use clap::{CommandFactory, Parser};
 use clap_complete::generate;
 use rmcp::ServiceExt;
 
-use vein::cli::{Cli, Command};
+use vein::cli::{Cli, Command, PromptCommand};
 use vein::client::{ReqwestClient, VikunjaClient};
 use vein::config::{ConnectionConfig, ProjectConfig};
 use vein::init;
 use vein::project::ProjectClient;
-use vein::server::{VeinServer, format_task_detail, format_task_list, parse_priority};
+use vein::server::{VeinServer, format_task_detail, format_task_list, orient_text, parse_priority};
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -78,7 +78,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             | Command::ListLabels
             | Command::AddRelation { .. }
             | Command::UpdateTask { .. }
-            | Command::CreateTask { .. },
+            | Command::CreateTask { .. }
+            | Command::Prompt { .. },
         ) => {
             let conn_config = ConnectionConfig::from_env()?;
             let project_config = ProjectConfig::from_env()?;
@@ -178,6 +179,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .create_task(&title, Some(&description), priority)
                         .await?;
                     println!("Created task {}: {}", task.display_id(), task.title);
+                }
+                Command::Prompt {
+                    prompt: PromptCommand::Orient,
+                } => {
+                    println!("{}", orient_text(&project).await);
                 }
                 _ => unreachable!(),
             }
